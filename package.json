@@ -1,0 +1,16 @@
+{
+  "name": "alone-training-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A calm, mobile-first dog alone-training tracker.",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "test": "node --test \"tests/unit/*.test.js\"",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.55.0"
+  }
+}
