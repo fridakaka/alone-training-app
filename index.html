@@ -24,6 +24,21 @@
 
     <!-- State 1: ready -->
     <section id="view-ready" class="panel">
+      <div id="context-picker" class="segmented" role="group" aria-label="Where are you training?">
+        <!-- filled from state.contexts by app.js -->
+      </div>
+
+      <div class="target" aria-live="polite">
+        <p id="target-label" class="target-label">Suggested today</p>
+        <div class="stepper">
+          <button id="target-down" class="step-btn" type="button" aria-label="Shorter target">−</button>
+          <output id="target-value" class="target-value" for="target-down target-up">No target</output>
+          <button id="target-up" class="step-btn" type="button" aria-label="Longer target">+</button>
+        </div>
+        <p id="target-basis" class="target-basis"></p>
+        <div id="target-chips" class="chips"></div>
+      </div>
+
       <button id="start-btn" class="btn btn-primary btn-huge" type="button">Start training</button>
     </section>
 
@@ -31,12 +46,13 @@
     <section id="view-training" class="panel" hidden>
       <p class="label">Charlie has been alone for</p>
       <div id="timer" class="timer" role="timer" aria-live="off">00:00</div>
+      <p id="training-target" class="training-target" hidden></p>
       <button id="end-btn" class="btn btn-dark btn-huge" type="button">End training</button>
     </section>
 
     <!-- State 3: result -->
     <section id="view-result" class="panel" hidden>
-      <p class="label">Session finished · <strong id="result-duration"></strong></p>
+      <p class="label">Session finished · <strong id="result-duration"></strong><span id="result-target"></span></p>
       <h2 class="question">How did it go?</h2>
       <div class="choices">
         <button id="good-btn" class="btn btn-good" type="button">Went well</button>
@@ -47,19 +63,20 @@
 
     <section id="progress" class="card" aria-labelledby="progress-title">
       <div class="card-head">
-        <h2 id="progress-title">Progress</h2>
+        <h2 id="progress-title">Progress <span class="dot">·</span> <span id="progress-context" class="muted">Home</span></h2>
         <div class="legend" aria-hidden="true">
           <span><i class="swatch good"></i>Went well</span>
           <span><i class="swatch bad"></i>Didn't go well</span>
+          <span id="legend-target"><i class="swatch-target"></i>Target</span>
         </div>
       </div>
       <div id="chart"></div>
       <p id="chart-detail" class="detail" aria-live="polite"></p>
-      <p id="empty" class="empty">Your sessions will appear here after your first training.</p>
+      <p id="empty" class="empty">Your <span id="empty-context">Home</span> sessions will appear here after your first training.</p>
     </section>
 
     <section id="history-section" class="card" aria-labelledby="history-title" hidden>
-      <h2 id="history-title">Previous sessions</h2>
+      <h2 id="history-title">Previous sessions <span class="dot">·</span> <span id="history-context" class="muted">Home</span></h2>
       <ol id="history" class="history"></ol>
     </section>
   </main>

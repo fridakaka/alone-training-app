@@ -2,8 +2,10 @@
 // One bar per session (oldest left), height = duration.
 // Result is shown by colour AND pattern (solid = went well, striped = didn't),
 // so it is readable for colour-blind users too.
+// If a session had a target, a thin horizontal tick marks the target height.
 
 import { formatDuration } from './training.js';
+import { formatTarget } from './progression.js';
 
 export const MAX_BARS = 30;
 
@@ -38,7 +40,9 @@ export function renderChart(allSessions) {
 
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
-  const { top, ticks } = niceScale(Math.max(...sessions.map((s) => s.durationSec)));
+  const { top, ticks } = niceScale(
+    Math.max(...sessions.map((s) => Math.max(s.durationSec, s.targetSec || 0))),
+  );
   const slot = plotW / Math.max(sessions.length, 6); // keep bars from getting huge
   const gap = 2;
   const barW = Math.max(3, Math.min(28, slot - gap));
@@ -58,13 +62,19 @@ export function renderChart(allSessions) {
       const x = PAD.left + i * slot + (slot - barW) / 2;
       const h = Math.max(2, baseline - y(s.durationSec));
       const r = Math.min(4, barW / 2, h);
-      const label = `${dateFmt(s.startedAt)} · ${formatDuration(s.durationSec)} · ${
+      const target = s.targetSec ? ` (target ${formatTarget(s.targetSec)})` : '';
+      const label = `${dateFmt(s.startedAt)} · ${formatDuration(s.durationSec)}${target} · ${
         s.result === 'good' ? 'Went well' : "Didn't go well"
       }`;
+      const tickW = Math.min(barW + 6, slot);
+      const targetTick = s.targetSec
+        ? `<line class="target" x1="${x + barW / 2 - tickW / 2}" x2="${x + barW / 2 + tickW / 2}" y1="${y(s.targetSec)}" y2="${y(s.targetSec)}"/>`
+        : '';
       return `
     <g class="bar ${s.result}" data-id="${s.id}" tabindex="0" role="img" aria-label="${label}">
       <rect class="hit" x="${PAD.left + i * slot}" y="${PAD.top}" width="${slot}" height="${plotH}"/>
       <path class="mark" d="${roundedTopBar(x, baseline, barW, h, r)}"/>
+      ${targetTick}
     </g>`;
     })
     .join('');

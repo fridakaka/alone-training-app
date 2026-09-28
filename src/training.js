@@ -3,20 +3,40 @@
 
 export const RESULTS = Object.freeze({ GOOD: 'good', BAD: 'bad' });
 
+export const SCHEMA_VERSION = 2;
+
+export const DEFAULT_CONTEXTS = Object.freeze([
+  { id: 'home', name: 'Home' },
+  { id: 'car', name: 'Car' },
+  { id: 'outside-shop', name: 'Outside shop' },
+]);
+
 export function createInitialState() {
   return {
-    schemaVersion: 1,
+    schemaVersion: SCHEMA_VERSION,
     dogs: [{ id: 'charlie', name: 'Charlie' }],
-    contexts: [{ id: 'home', name: 'Home' }],
+    contexts: DEFAULT_CONTEXTS.map((c) => ({ ...c })),
+    selectedContextId: 'home', // last chosen context, remembered between visits
     active: null, // session currently running
     pending: null, // session ended but not yet rated
     sessions: [],
   };
 }
 
-export function startSession(state, { dogId, contextId, now = Date.now() }) {
+export function selectContext(state, contextId) {
+  if (state.active || !state.contexts.some((c) => c.id === contextId)) return state;
+  return { ...state, selectedContextId: contextId };
+}
+
+// targetSec is only a note of intent (number of seconds or null).
+// It never stops or changes the timer.
+export function startSession(state, { dogId, contextId, targetSec = null, now = Date.now() }) {
   if (state.active) return state;
-  return { ...state, active: { dogId, contextId, startedAt: now } };
+  return { ...state, active: { dogId, contextId, targetSec: normalizeTarget(targetSec), startedAt: now } };
+}
+
+function normalizeTarget(t) {
+  return Number.isFinite(t) && t > 0 ? Math.round(t) : null;
 }
 
 export function elapsedSeconds(active, now = Date.now()) {
@@ -28,13 +48,14 @@ export function elapsedSeconds(active, now = Date.now()) {
 // It is kept in state so it survives the app being closed before rating.
 export function endSession(state, now = Date.now()) {
   if (!state.active) return state;
-  const { dogId, contextId, startedAt } = state.active;
+  const { dogId, contextId, startedAt, targetSec = null } = state.active;
   const pending = {
     dogId,
     contextId,
     startedAt,
     endedAt: now,
-    durationSec: elapsedSeconds(state.active, now),
+    durationSec: elapsedSeconds(state.active, now), // actual duration
+    targetSec,
   };
   return { ...state, active: null, pending };
 }

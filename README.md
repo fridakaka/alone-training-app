@@ -1,16 +1,26 @@
-# Alone Time – dog alone-training tracker (v0.1)
+# Alone Time – dog alone-training tracker (v0.2)
 
-A calm, phone-first app for tracking Charlie's alone training at home.
+A calm, phone-first app for tracking Charlie's alone training in three places:
+**Home**, **Car** and **Outside shop**.
 
-Tap **Start training** → leave → come back and tap **End training** → answer
-**Went well / Didn't go well**. Every session is saved with date, duration and
-result, shown in a list and a graph.
+Pick the place (remembered from last time) → tap **Start training** → come back and tap
+**End training** → answer **Went well / Didn't go well**. Every session is saved with date,
+place, target and actual duration, and result. Each place has its own graph, history and
+suggested next duration.
 
 <p>
-<img src="docs/screenshots/2-training.png" width="220" alt="Timer running">
-<img src="docs/screenshots/3-result.png" width="220" alt="How did it go?">
-<img src="docs/screenshots/4-history-light.png" width="220" alt="Progress graph and history">
+<img src="docs/screenshots/6-car-suggestion.png" width="220" alt="Place picker and suggested target">
+<img src="docs/screenshots/7-training-target.png" width="220" alt="Timer running with target">
+<img src="docs/screenshots/8-car-history.png" width="220" alt="Graph and history for Car">
 </p>
+
+## Suggested duration (v0.2)
+
+Per place, based on the actual duration of the most recent session there:
+**went well → +10 %**, **didn't go well → −10 %**, rounded to a natural value
+(5 s under 1 min, 15 s up to 5 min, 30 s up to 15 min, 1 min up to 1 h, then 5 min).
+The target is only a note: the timer always runs until you tap End training.
+Full rules: [docs/PLAN-v0.2.md](docs/PLAN-v0.2.md).
 
 ## Get it on your phone
 
@@ -27,15 +37,17 @@ or clearing Safari/Chrome website data deletes the history.
 
 ## How it's built (short version)
 
-See [docs/PLAN.md](docs/PLAN.md) for the plain-language explanation.
+See [docs/PLAN.md](docs/PLAN.md) for the plain-language explanation and
+[docs/PLAN-v0.2.md](docs/PLAN-v0.2.md) for what v0.2 added.
 
 | File | What it does |
 |---|---|
 | `index.html` | The screen |
 | `styles.css` | Look & feel, light and dark mode |
 | `src/app.js` | Connects buttons to logic and redraws the screen |
-| `src/training.js` | The rules: start, end, rate, durations (no screen code) |
-| `src/store.js` | Saves/loads data on the phone |
+| `src/training.js` | The rules: start, end, rate, places, durations (no screen code) |
+| `src/progression.js` | Suggested next duration and rounding |
+| `src/store.js` | Saves/loads data on the phone, upgrades v0.1 data |
 | `src/chart.js` | Draws the graph |
 | `sw.js`, `manifest.webmanifest`, `icon*` | Make it installable and work offline |
 
@@ -50,8 +62,11 @@ npm test           # logic tests
 npm run test:e2e   # clicks through the real app in a phone-sized browser, saves screenshots to test-results/
 ```
 
-## Not in v0.1 (on purpose)
+## Your data and upgrades
 
-Multiple dogs, multiple places (Car, Outside shop…), suggested next duration,
-notes. The data format already has room for these (`dogs`, `contexts`, and one
-record per session), so they can be added without losing saved history.
+v0.2 stores data under a new key (`alone-training:v2`). On first launch it copies all
+v0.1 sessions into **Home**. The original v0.1 data is left untouched on the phone as a backup.
+
+## Not built yet (on purpose)
+
+Multiple dogs, notes, editing or deleting past sessions, export/backup.

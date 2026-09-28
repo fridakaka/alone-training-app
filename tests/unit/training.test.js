@@ -27,7 +27,7 @@ test('full loop: start, end, rate saves date, duration and result', () => {
   assert.equal(s.sessions.length, 1);
   assert.deepEqual(
     { ...s.sessions[0], id: undefined },
-    { id: undefined, ...where, startedAt: 1_000_000, endedAt: 1_095_400, durationSec: 95, result: 'good' },
+    { id: undefined, ...where, startedAt: 1_000_000, endedAt: 1_095_400, durationSec: 95, targetSec: null, result: 'good' },
   );
 });
 
@@ -75,4 +75,74 @@ test('formatting', () => {
   assert.equal(formatDuration(45), '45 s');
   assert.equal(formatDuration(185), '3 min 05 s');
   assert.equal(formatDuration(3720), '1 h 02 min');
+});
+
+// ---------- v0.2 ----------
+import { selectContext } from '../../src/training.js';
+import { suggestNext } from '../../src/progression.js';
+
+function runSession(state, contextId, seconds, result, { targetSec = null, start = 0 } = {}) {
+  let s = selectContext(state, contextId);
+  s = startSession(s, { dogId: 'charlie', contextId, targetSec, now: start });
+  s = endSession(s, start + seconds * 1000);
+  return recordResult(s, result);
+}
+
+test('three contexts exist and Home is selected by default', () => {
+  const s = createInitialState();
+  assert.deepEqual(s.contexts.map((c) => c.name), ['Home', 'Car', 'Outside shop']);
+  assert.equal(s.selectedContextId, 'home');
+});
+
+test('selecting a context is ignored while training or for unknown ids', () => {
+  let s = selectContext(createInitialState(), 'car');
+  assert.equal(s.selectedContextId, 'car');
+  assert.equal(selectContext(s, 'moon').selectedContextId, 'car');
+  s = startSession(s, { dogId: 'charlie', contextId: 'car', now: 0 });
+  assert.equal(selectContext(s, 'home').selectedContextId, 'car');
+});
+
+test('progression is independent per context', () => {
+  let s = createInitialState();
+  s = runSession(s, 'home', 1200, 'good', { start: 1 });   // 20 min home
+  s = runSession(s, 'car', 300, 'good', { start: 2 });     // 5 min car
+  s = runSession(s, 'outside-shop', 120, 'bad', { start: 3 }); // 2 min shop
+  const next = (ctx) => suggestNext(sessionsFor(s, { dogId: 'charlie', contextId: ctx }));
+  assert.equal(next('home'), 1320);
+  assert.equal(next('car'), 330);
+  assert.equal(next('outside-shop'), 105);
+
+  // Another good Home session changes Home only.
+  s = runSession(s, 'home', 1320, 'good', { start: 4 });
+  assert.equal(next('home'), 1440);
+  assert.equal(next('car'), 330);
+  assert.equal(next('outside-shop'), 105);
+});
+
+test('target and actual duration are both stored and can differ', () => {
+  const s = runSession(createInitialState(), 'car', 283, 'good', { targetSec: 270 });
+  const [saved] = s.sessions;
+  assert.equal(saved.targetSec, 270);
+  assert.equal(saved.durationSec, 283);
+  assert.equal(saved.contextId, 'car');
+});
+
+test('manual override: whatever target is chosen is what gets stored', () => {
+  const s = runSession(createInitialState(), 'home', 100, 'good', { targetSec: 600 });
+  assert.equal(s.sessions[0].targetSec, 600);
+});
+
+test('no target is stored as null and the timer does not care about the target', () => {
+  let s = runSession(createInitialState(), 'home', 90, 'bad');
+  assert.equal(s.sessions[0].targetSec, null);
+  s = startSession(s, { dogId: 'charlie', contextId: 'home', targetSec: 10, now: 0 });
+  assert.equal(elapsedSeconds(s.active, 60_000), 60); // well past the target, still counting
+  assert.equal(s.active.targetSec, 10);
+});
+
+test('invalid targets are treated as no target', () => {
+  for (const t of [0, -5, NaN, 'abc', undefined]) {
+    const s = startSession(createInitialState(), { dogId: 'charlie', contextId: 'home', targetSec: t, now: 0 });
+    assert.equal(s.active.targetSec, null);
+  }
 });

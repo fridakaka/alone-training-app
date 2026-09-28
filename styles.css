@@ -173,3 +173,77 @@ body[data-mode="training"] .card { opacity: 0.45; }
 .when { grid-area: when; color: var(--ink-2); font-size: 14px; }
 .dur { grid-area: dur; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tag { grid-area: tag; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink); }
+
+/* ---------- v0.2: context picker ---------- */
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.seg {
+  appearance: none;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  min-height: 48px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.seg[aria-pressed="true"] { background: var(--primary); color: var(--primary-ink); }
+.seg:focus-visible, .step-btn:focus-visible, .chip:focus-visible { outline: 3px solid var(--good); outline-offset: 2px; }
+
+/* ---------- v0.2: target ---------- */
+.target { text-align: center; padding: 4px 0 0; }
+.target-label { margin: 0; font-size: 14px; color: var(--ink-2); }
+.stepper { display: flex; align-items: center; justify-content: center; gap: 20px; margin: 2px 0; }
+.target-value {
+  min-width: 5ch;
+  font-size: 44px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.target-value.none { font-size: 22px; font-weight: 500; color: var(--ink-3); line-height: 2.3; }
+.step-btn {
+  appearance: none;
+  width: 48px; height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit; font-size: 24px; line-height: 1;
+  cursor: pointer;
+}
+.step-btn:disabled { opacity: .35; cursor: default; }
+.target-basis { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); min-height: 1.45em; }
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 10px; }
+.chips:empty { display: none; }
+.chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-2);
+  border-radius: 999px;
+  font: inherit; font-size: 14px; font-weight: 500;
+  min-height: 40px;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.training-target { margin: -16px 0 4px; text-align: center; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.training-target.reached { color: var(--ink); font-weight: 600; }
+
+/* target marker in history + chart */
+.row { grid-template-areas: "when dur" "tag planned"; }
+.planned { grid-area: planned; justify-self: end; font-size: 13px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.chart .target { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
+.swatch-target { display: inline-block; width: 12px; height: 0; border-top: 2px solid var(--ink); border-radius: 1px; }
