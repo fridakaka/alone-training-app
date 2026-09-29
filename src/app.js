@@ -140,7 +140,10 @@ function currentTarget() {
 const EXPLANATION = {
   [KINDS.RAISE]: 'Several calm sessions on different days — small increase.',
   [KINDS.REPEAT]: 'Keep this time until it feels stable.',
-  [KINDS.LIMITED]: (sec) => `Limited basis — repeat ${formatTarget(sec)}.`,
+  [KINDS.LIMITED]: (sec) =>
+    sec == null
+      ? 'Limited basis — choose a short time. One session counts once more sessions confirm it.'
+      : `Limited basis — repeat ${formatTarget(sec)}.`,
   [KINDS.EASIER]: 'The last session was hard — shorter suggestion.',
   [KINDS.HARD_CHOOSE]: 'The last session was hard — choose a short, easy time.',
   [KINDS.WORRIED_AT_ONCE]: 'Worry from the start. Choose an easier step before the next absence.',

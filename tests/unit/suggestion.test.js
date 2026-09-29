@@ -40,12 +40,57 @@ test('1: old 2-hour sessions and a two-week break → no automatic time, earlier
 });
 
 // 2
-test('2: same history + a new good 10 s session → repeat 10 s (limited basis), not one hour', () => {
-  const r = suggest([...OLD_TWO_HOURS(), good(0, 10, { hour: 9 })]);
+test('2: same history + a new good 10 s session planned as 10 s → repeat 10 s, not one hour', () => {
+  const r = suggest([...OLD_TWO_HOURS(), good(0, 10, { hour: 9, targetSec: 10 })]);
   assert.equal(r.kind, KINDS.LIMITED);
   assert.equal(r.sec, 10);
   assert.equal(r.earlierLevel, 7200); // history only
   assert.equal(r.repeatSec, 10);
+  // Without a plan, one session alone sets no target (same rule for every length).
+  const unplanned = suggest([...OLD_TWO_HOURS(), good(0, 10, { hour: 9 })]);
+  assert.equal(unplanned.kind, KINDS.LIMITED);
+  assert.equal(unplanned.sec, null);
+  assert.equal(unplanned.repeatSec, null);
+});
+
+test('reported: old 2 h history, worry at once, then ONE good 2 h session without a plan → no target, no Repeat', () => {
+  const r = suggest([...OLD_TWO_HOURS(), bad(1, 30, { anxietyOnsetSec: 0 }), good(0, 7200)]);
+  assert.equal(r.kind, KINDS.WORRIED_AT_ONCE);
+  assert.equal(r.sec, null);
+  assert.equal(r.repeatSec, null);
+  // Also with a plan: a single session after worry-at-once is not enough to lift the limit.
+  const planned = suggest([...OLD_TWO_HOURS(), bad(1, 30, { anxietyOnsetSec: 0 }), good(0, 10, { targetSec: 10 })]);
+  assert.equal(planned.sec, null);
+});
+
+test('reported: break, then ONE good 2 h session without a plan → no target, no Repeat', () => {
+  const r = suggest([...OLD_TWO_HOURS(), good(0, 7200)]);
+  assert.equal(r.kind, KINDS.LIMITED);
+  assert.equal(r.sec, null);
+  assert.equal(r.repeatSec, null);
+  // A plan protects too: 2 h actual with a 10 s plan → 10 s, never 2 h.
+  assert.equal(suggest([...OLD_TWO_HOURS(), good(0, 7200, { targetSec: 10 })]).sec, 10);
+});
+
+test('hard session with unknown worry time, then one long good session → the limit stays', () => {
+  const r = suggest([good(3, 300), bad(1, 300), good(0, 7200)]);
+  assert.equal(r.kind, KINDS.HARD_CHOOSE);
+  assert.equal(r.sec, null);
+  assert.equal(r.repeatSec, null);
+});
+
+test('the single session is kept and counts once another session confirms it', () => {
+  const one = [...OLD_TWO_HOURS(), bad(3, 30, { anxietyOnsetSec: 0 }), good(2, 20)];
+  assert.equal(suggest(one).sec, null);
+  const confirmed = suggest([...one, good(1, 20)]); // 2 good sessions on 2 days after the hard one
+  assert.equal(confirmed.level, 20);
+  assert.equal(confirmed.sec, 22);
+  // A long single session is confirmed only up to what the second session supports.
+  // 2 h (day 1) + 1 min (day 2): both support 1 min on two days → level 1:00, small increase.
+  const mixed = suggest([...OLD_TWO_HOURS(), good(1, 7200, { hour: 9 }), good(0, 60)]);
+  assert.equal(mixed.level, 60);
+  assert.equal(mixed.sec, 65);
+  assert.equal(mixed.repeatSec, 60);
 });
 
 // 3
@@ -69,9 +114,11 @@ test('4: 5 min then 2 h the same day → 2 h is neither the suggestion nor offer
   assert.equal(planned.sec, 300);
 });
 
-test('a single session is used as an anchor, but never above its planned time', () => {
+test('a single session anchors only its planned time; without a plan it sets no target', () => {
   assert.equal(suggest([good(0, 7200, { targetSec: 300 })]).sec, 300);
-  assert.equal(suggest([good(0, 90)]).sec, 90);
+  assert.equal(suggest([good(0, 60, { targetSec: 300 })]).sec, 60); // shorter than planned: the actual time
+  assert.equal(suggest([good(0, 90)]).sec, null);
+  assert.equal(suggest([good(0, 90)]).repeatSec, null);
 });
 
 // 5
@@ -147,7 +194,8 @@ test('11: good sessions of 1 and 2 seconds are kept and count as observations', 
   assert.equal(r.kind, KINDS.REPEAT);
   assert.equal(r.level, 1);
   assert.equal(r.sec, 1);
-  assert.equal(suggest([good(0, 2)]).sec, 2);
+  assert.equal(suggest([good(0, 2, { targetSec: 2 })]).sec, 2);
+  assert.equal(suggest([good(0, 2)]).sec, null); // kept, but alone and unplanned it sets no target
   assert.equal(suggest([good(3, 5), good(2, 5), good(1, 5)]).sec, 6);
 });
 
@@ -205,6 +253,8 @@ test('building blocks', () => {
   assert.equal(anchor([good(1, 300), good(1, 7200)]), 300);
   assert.equal(anchor([good(1, 10), good(1, 7200)]), 10);
   assert.equal(anchor([]), null);
+  assert.equal(anchor([good(1, 7200)]), null);
+  assert.equal(anchor([good(1, 7200, { targetSec: 30 })]), 30);
   const pairs = [good(3, 300), good(2, 600), good(1, 7200)].map((s, i, a) => [s, weights(a)[i]]);
   assert.equal(establishedLevel(pairs), 600);
 });

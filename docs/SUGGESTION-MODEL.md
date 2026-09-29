@@ -1,4 +1,4 @@
-# Time suggestion model (v0.5)
+# Time suggestion model (v0.5.1)
 
 Code: `src/suggestion.js` (pure, deterministic, reference time `now` injected).
 Tests: `tests/unit/suggestion.test.js` (regression cases 1–16 below).
@@ -43,17 +43,22 @@ The window size (7 days / 5 sessions) is an adjustable product choice, not a bio
        ("Several calm sessions on different days — small increase.")
      - otherwise → the level ("Keep this time until it feels stable.")
    - **Limited basis** (no established level) → **anchor**: the longest time supported by **≥ 2** good
-     sessions (any days). With a single good session: that session, but **never above its planned time**.
-     "Limited basis — repeat 0:10."
-   - While fewer than **2** good sessions have followed a hard session, the result is also **capped** by rule 3.
+     sessions (any days). A **single** good session is confirmed by nothing else, so on its own it can
+     only anchor its **planned** time (the smaller of plan and actual). Without a plan: **no automatic
+     target** – the session is kept and counts as soon as another session supports it.
+     "Limited basis — repeat 0:10." / "Limited basis — choose a short time. One session counts once more sessions confirm it."
+   - While fewer than **2** good sessions have followed a hard session, rule 3 still applies:
+     a numeric limit caps the result; **"no time" (worry from the start, or no shorter basis) is also a
+     limit** and keeps the suggestion empty until 2 good sessions have followed.
 
 ## Extreme values (applies to every path)
 
-- A time only counts when **more than one** session supports it (anchor, level, earlier level) – the only
-  exception is a single session, which is capped by its plan. So 5 min + 2 h the same day → **5:00**.
+- A time only counts when **more than one** session supports it (anchor, level, earlier level). A single
+  session can only anchor its planned time; unplanned, it sets no target. So 5 min + 2 h the same day →
+  **5:00**, and one unplanned 2 h session → **no target**.
 - No medians or means that can pick the newest extreme value.
-- **Repeat** (latest good time) is offered only after a session that went well, never after a hard session
-  or a break, and never above 1.5 × the suggestion.
+- **Repeat** (latest good time) is offered only next to an actual suggestion, after a session that went well,
+  never after a hard session or a break, and never above 1.5 × the suggestion.
 - The logged actual time is always stored unchanged. Limits apply to the calculation only.
 
 ## Faster return can be followed, not assumed
@@ -84,7 +89,10 @@ From "No target", **+** opens time entry instead of guessing a time. Tapping the
 | # | History | Result |
 |---|---|---|
 | 1 | 3 × 2 h good, 16–14 days ago | no time (break); earlier stable level 2:00:00 shown as history |
-| 2 | same + new good 10 s | **0:10** – "Limited basis — repeat 0:10." |
+| 2 | same + new good 10 s, planned 10 s | **0:10** – "Limited basis — repeat 0:10." (unplanned: no target) |
+| 2b | same + worry at 0 s + one good 2 h, no plan | no target, no Repeat (limit stays until 2 good sessions) |
+| 2c | same + one good 2 h, no plan | no target, no Repeat; with a 10 s plan → 0:10 |
+| 2d | hard (unknown worry) + one good 2 h | no target, no Repeat |
 | 3 | same + worry at 0 s | no time – "Worry from the start…" |
 | 4 | 5 min, then 2 h, same day | **5:00**; Repeat not offered |
 | 5 | 4 × 5 min on different days + 1 × 2 h | **5:30** (level 5:00) |
@@ -107,4 +115,4 @@ From "No target", **+** opens time entry instead of guessing a time. Tapping the
 - The worry time is the user's rough estimate.
 - Preliminary parameters to review with real use: 7 days / 5 sessions, 0.8 recency, "2 sessions on
   2 days", 90 % support tolerance, +10 % raise (+20 % step cap), 80 % below worry, 10 s "from the start",
-  2 good sessions to lift a hard-session cap, 1.5 × Repeat limit.
+  2 good sessions to lift a hard-session limit, 1.5 × Repeat limit, "a single session only anchors its plan".

@@ -156,17 +156,22 @@ try {
     assert.equal(await page.locator('#history .planned').count(), 0);
   });
 
-  await step('one Car session is a limited basis: repeat 5:00', async () => {
-    assert.equal(await text('#target-label'), 'Suggestion today');
-    assert.equal(await text('#target-value'), '5:00');
-    assert.equal(await text('#target-basis'), 'Limited basis — repeat 5:00.');
+  await step('one unplanned Car session: kept, but no automatic target and no Repeat', async () => {
+    assert.equal(await text('#target-label'), 'Choose a starting time');
+    assert.equal(await text('#target-value'), 'No target');
+    assert.equal(await text('#target-basis'), 'Limited basis — choose a short time. One session counts once more sessions confirm it.');
+    assert.doesNotMatch(await text('#target-chips'), /Repeat/);
   });
 
-  await step('manual − changes the target; "Use suggestion" brings it back', async () => {
+  await step('type 5:00, then manual − changes the target', async () => {
+    await page.tap('#target-up');
+    await page.fill('#target-min', '5');
+    await page.fill('#target-sec', '0');
+    await page.tap('#target-set');
+    assert.equal(await text('#target-value'), '5:00');
     await page.tap('#target-down');
     assert.equal(await text('#target-label'), 'Your target');
     assert.equal(await text('#target-value'), '4:45');
-    assert.match(await text('#target-chips'), /Use suggestion 5:00/);
   });
 
   await step('target is shown while training but never stops the timer', async () => {
@@ -257,7 +262,9 @@ try {
     await pick('Home');
     await nextDay();
     await session(30, 'good');
-    assert.equal(await text('#target-basis'), 'Limited basis — repeat 0:30.'); // one session: repeat, no raise
+    // One good session after the hard one is not enough to lift the limit.
+    assert.equal(await text('#target-basis'), 'The last session was hard — choose a short, easy time.');
+    assert.equal(await text('#target-value'), 'No target');
     await nextDay();
     await session(30, 'good');
     assert.equal(await text('#target-label'), 'Suggestion today');
@@ -582,6 +589,17 @@ try {
     await p.tap('#onset-save');
     assert.equal(await t('#target-value'), 'No target');
     assert.equal(await t('#target-basis'), 'Worry from the start. Choose an easier step before the next absence.');
+    // Reported case: then ONE good 2-hour session without a target → still no target, no Repeat.
+    await p.clock.runFor(3_600_000);
+    await p.tap('#start-btn');
+    await p.clock.fastForward(7_200_000);
+    await p.clock.runFor(500);
+    await p.tap('#end-btn');
+    await p.tap('#good-btn');
+    assert.match(await t('#history li:first-child .dur'), /^2 h 00 min$/); // stored unchanged
+    assert.equal(await t('#target-value'), 'No target');
+    assert.equal(await t('#target-basis'), 'Worry from the start. Choose an easier step before the next absence.');
+    assert.doesNotMatch(await t('#target-chips'), /Repeat/);
     await c.close();
   });
 

@@ -50,7 +50,7 @@ export const SUGGESTION_SETTINGS = Object.freeze({
 export const KINDS = Object.freeze({
   RAISE: 'raise', // established on different days and just confirmed => small step up
   REPEAT: 'repeat', // established, not confirmed by the latest session => same time
-  LIMITED: 'limited', // current basis is thin => repeat a supported, cautious time
+  LIMITED: 'limited', // current basis is thin => repeat a supported, cautious time (or none: user chooses)
   EASIER: 'easier', // latest session was hard => shorter
   HARD_CHOOSE: 'hard-choose', // latest session was hard, no basis for a time => user chooses
   WORRIED_AT_ONCE: 'worried-at-once', // worry from the start => no positive time
@@ -79,9 +79,10 @@ export function suggestTarget(sessions, { now = Date.now(), settings = SUGGESTIO
 
   const base = decide(logged, relevant, since, now, S);
   let repeatSec = null;
-  if ([KINDS.RAISE, KINDS.REPEAT, KINDS.LIMITED].includes(base.kind) && base.lastGood) {
+  // Repeat is only offered next to an actual suggestion, and never far above it.
+  if ([KINDS.RAISE, KINDS.REPEAT, KINDS.LIMITED].includes(base.kind) && base.lastGood && base.sec != null) {
     repeatSec = floorNatural(base.lastGood.durationSec);
-    if (base.sec != null && repeatSec > base.sec * S.REPEAT_MAX_RATIO) repeatSec = null;
+    if (repeatSec > base.sec * S.REPEAT_MAX_RATIO) repeatSec = null;
   }
   return { kind: base.kind, sec: base.sec, level: base.level ?? null, repeatSec, earlierLevel };
 }
@@ -115,10 +116,13 @@ function decide(logged, relevant, since, now, S) {
     out = { kind: KINDS.LIMITED, sec: anchor(after.map(([s]) => s), S) };
   }
 
-  // 3. A recent hard session still caps the suggestion until enough good sessions followed.
+  // 3. A recent hard session still limits the suggestion until enough good sessions followed.
+  //    "No time" from the hard session (worry from the start, or no shorter basis) is a limit
+  //    too – not the absence of one: it stays in force until RECOVERY_SESSIONS good sessions.
   if (hardIdx >= 0 && after.length < S.RECOVERY_SESSIONS) {
-    const cap = difficulty(window, w, hardIdx, S).sec;
-    if (cap != null && out.sec > cap) out = { kind: KINDS.EASIER, sec: cap };
+    const hard = difficulty(window, w, hardIdx, S);
+    if (hard.sec == null) return { ...hard, lastGood };
+    if (out.sec == null || out.sec > hard.sec) out = { kind: KINDS.EASIER, sec: hard.sec };
   }
   return { ...out, lastGood };
 }
@@ -166,15 +170,16 @@ export function establishedLevel(pairs, S = SUGGESTION_SETTINGS) {
 }
 
 // Cautious time when the basis is thin: the longest time supported by at least two good
-// sessions. With only one good session, that session's time – but never more than its plan.
-// An extreme value can therefore never be picked on its own.
+// sessions. A single good session is confirmed by nothing else, so on its own it can only
+// anchor the time that was PLANNED for it (min of plan and actual). Without a plan it gives
+// no automatic target – it is kept and counts as soon as another session supports it.
 export function anchor(sessions, S = SUGGESTION_SETTINGS) {
   const goods = sessions.filter((s) => s.result === 'good');
   if (!goods.length) return null;
   if (goods.length === 1) {
     const [s] = goods;
-    const planned = Number.isFinite(s.targetSec) && s.targetSec > 0 ? s.targetSec : Infinity;
-    return floorNatural(Math.min(s.durationSec, planned));
+    const planned = Number.isFinite(s.targetSec) && s.targetSec > 0 ? s.targetSec : null;
+    return planned == null ? null : floorNatural(Math.min(s.durationSec, planned)) || null;
   }
   for (const d of distinctDesc(goods.map((s) => s.durationSec))) {
     const support = goods.filter((s) => s.durationSec >= S.SUPPORT_TOLERANCE * d).length;
