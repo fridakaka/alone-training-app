@@ -4,10 +4,18 @@
 // so it is readable for colour-blind users too.
 // If a session had a target, a thin horizontal tick marks the target height.
 
-import { formatDuration } from './training.js';
+import { formatDuration, RESULTS } from './training.js';
 import { formatTarget } from './progression.js';
 
 export const MAX_BARS = 30;
+
+// "Didn't go well · worried at 0:30", "Went well · not counted". Used by graph and history.
+export function resultText(s) {
+  if (s.result === RESULTS.GOOD) return s.uncertain ? 'Went well · not counted' : 'Went well';
+  return Number.isFinite(s.anxietyOnsetSec)
+    ? `Didn't go well · worried at ${formatTarget(s.anxietyOnsetSec)}`
+    : "Didn't go well";
+}
 
 const W = 340;
 const H = 190;
@@ -63,9 +71,7 @@ export function renderChart(allSessions) {
       const h = Math.max(2, baseline - y(s.durationSec));
       const r = Math.min(4, barW / 2, h);
       const target = s.targetSec ? ` (target ${formatTarget(s.targetSec)})` : '';
-      const label = `${dateFmt(s.startedAt)} · ${formatDuration(s.durationSec)}${target} · ${
-        s.result === 'good' ? 'Went well' : "Didn't go well"
-      }`;
+      const label = `${dateFmt(s.startedAt)} · ${formatDuration(s.durationSec)}${target} · ${resultText(s)}`;
       const tickW = Math.min(barW + 6, slot);
       const targetTick = s.targetSec
         ? `<line class="target" x1="${x + barW / 2 - tickW / 2}" x2="${x + barW / 2 + tickW / 2}" y1="${y(s.targetSec)}" y2="${y(s.targetSec)}"/>`

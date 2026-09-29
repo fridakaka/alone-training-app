@@ -1,10 +1,9 @@
-// Suggested next duration. Pure functions, no DOM, no storage.
-// Rules are documented in docs/PLAN-v0.2.md – keep the two in sync.
+// Time values: rounding, manual −/+ steps and formatting. Pure functions.
+// The time suggestion itself lives in suggestion.js.
 
-export const GROWTH = 0.1; // ±10 %
 export const MIN_TARGET_SEC = 5;
 
-// Rounding step for a duration of this size (seconds).
+// Step for the manual − / + buttons (seconds). Coarse enough to be quick to tap.
 export function stepFor(sec) {
   if (sec < 60) return 5;
   if (sec < 5 * 60) return 15;
@@ -13,67 +12,28 @@ export function stepFor(sec) {
   return 5 * 60;
 }
 
+// Rounding grid for time suggestions. Finer than the button steps at short
+// times, so that rounding never turns a small change into a big relative jump
+// (at the start of each band the grid is at most ~8 % of the value).
+export function gridFor(sec) {
+  if (sec < 30) return 1;
+  if (sec < 2 * 60) return 5;
+  if (sec < 5 * 60) return 15;
+  if (sec < 15 * 60) return 30;
+  if (sec < 60 * 60) return 60;
+  return 5 * 60;
+}
+
 export function roundNatural(sec) {
-  const step = stepFor(sec);
-  return Math.max(MIN_TARGET_SEC, Math.round(sec / step) * step);
+  const grid = gridFor(sec);
+  return Math.max(MIN_TARGET_SEC, Math.round(sec / grid) * grid);
 }
 
-// `sessions` must be the history of ONE dog in ONE context, oldest first.
-export function lastSession(sessions) {
-  return sessions.length ? sessions[sessions.length - 1] : null;
-}
-
-// After a session that didn't go well, the next good session is repeated once
-// before growing again ("two good in a row"). Set to false for the plain v0.2 rule.
-export const CONSOLIDATE_AFTER_SETBACK = true;
-
-// A good session that ended before this share of its target is treated as
-// "ended early for other reasons": the same target is suggested again.
-export const EARLY_END_RATIO = 0.9;
-
-export function plusTen(sec) {
-  const base = roundNatural(sec);
-  const next = roundNatural(sec * (1 + GROWTH));
-  return next > base ? next : base + stepFor(base);
-}
-
-export function minusTen(sec) {
-  const base = roundNatural(sec);
-  const next = roundNatural(sec * (1 - GROWTH));
-  if (next < base) return next;
-  return Math.max(MIN_TARGET_SEC, stepDown(base));
-}
-
-// Returns { sec, reason } or null. reason: 'up' | 'down' | 'consolidate' | 'early'.
-export function suggestDetailed(sessions) {
-  const last = lastSession(sessions);
-  if (!last) return null;
-  if (last.result !== 'good') return { sec: minusTen(last.durationSec), reason: 'down' };
-
-  if (last.targetSec && last.durationSec < last.targetSec * EARLY_END_RATIO) {
-    return { sec: roundNatural(last.targetSec), reason: 'early' };
-  }
-  const prev = sessions.length > 1 ? sessions[sessions.length - 2] : null;
-  if (CONSOLIDATE_AFTER_SETBACK && prev && prev.result !== 'good') {
-    return { sec: roundNatural(last.durationSec), reason: 'consolidate' };
-  }
-  return { sec: plusTen(last.durationSec), reason: 'up' };
-}
-
-export function suggestNext(sessions) {
-  return suggestDetailed(sessions)?.sec ?? null;
-}
-
-// "+10%" option after a good session, available even when the suggestion is different.
-export function plusTenLast(sessions) {
-  const last = lastSession(sessions);
-  return last && last.result === 'good' ? plusTen(last.durationSec) : null;
-}
-
-// "Repeat" option after a good session: roughly the same duration again.
-export function repeatLast(sessions) {
-  const last = lastSession(sessions);
-  return last && last.result === 'good' ? roundNatural(last.durationSec) : null;
+// Rounds DOWN to the suggestion grid: a suggestion never exceeds the value it came from.
+export function floorNatural(sec) {
+  if (!(sec >= 1)) return 0;
+  const grid = gridFor(sec);
+  return Math.max(1, Math.floor(sec / grid) * grid);
 }
 
 // Manual − / + adjustments. Snaps to the natural grid of the new size.

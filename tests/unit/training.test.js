@@ -79,7 +79,9 @@ test('formatting', () => {
 
 // ---------- v0.2 ----------
 import { selectContext } from '../../src/training.js';
-import { suggestNext } from '../../src/progression.js';
+import { suggestTarget, KINDS } from '../../src/suggestion.js';
+
+const DAY = 24 * 3600 * 1000;
 
 function runSession(state, contextId, seconds, result, { targetSec = null, start = 0 } = {}) {
   let s = selectContext(state, contextId);
@@ -102,21 +104,25 @@ test('selecting a context is ignored while training or for unknown ids', () => {
   assert.equal(selectContext(s, 'home').selectedContextId, 'car');
 });
 
-test('progression is independent per context', () => {
+test('suggestions are independent per context (no borrowing between contexts)', () => {
+  const T0 = 100 * DAY;
   let s = createInitialState();
-  s = runSession(s, 'home', 1200, 'good', { start: 1 });   // 20 min home
-  s = runSession(s, 'car', 300, 'good', { start: 2 });     // 5 min car
-  s = runSession(s, 'outside-shop', 120, 'bad', { start: 3 }); // 2 min shop
-  const next = (ctx) => suggestNext(sessionsFor(s, { dogId: 'charlie', contextId: ctx }));
-  assert.equal(next('home'), 1320);
-  assert.equal(next('car'), 330);
-  assert.equal(next('outside-shop'), 105);
+  for (const day of [0, 1, 2]) {
+    s = runSession(s, 'home', 1200, 'good', { start: T0 + day * DAY });        // 20 min Home
+    s = runSession(s, 'car', 300, 'good', { start: T0 + day * DAY + 3600e3 }); // 5 min Car
+  }
+  s = runSession(s, 'outside-shop', 120, 'bad', { start: T0 + 2 * DAY + 7200e3, });
+  const now = T0 + 3 * DAY;
+  const next = (st, ctx) => suggestTarget(sessionsFor(st, { dogId: 'charlie', contextId: ctx }), { now });
+  assert.equal(next(s, 'home').sec, 1320);
+  assert.equal(next(s, 'car').sec, 330);
+  assert.equal(next(s, 'outside-shop').kind, KINDS.HARD_CHOOSE); // no data borrowed from Home/Car
 
-  // Another good Home session changes Home only.
-  s = runSession(s, 'home', 1320, 'good', { start: 4 });
-  assert.equal(next('home'), 1440);
-  assert.equal(next('car'), 330);
-  assert.equal(next('outside-shop'), 105);
+  // A hard Car session changes Car only.
+  s = runSession(s, 'car', 300, 'bad', { start: T0 + 2 * DAY + 9000e3 });
+  assert.equal(next(s, 'home').sec, 1320);
+  assert.equal(next(s, 'car').kind, KINDS.HARD_CHOOSE);
+  assert.equal(next(s, 'outside-shop').kind, KINDS.HARD_CHOOSE);
 });
 
 test('target and actual duration are both stored and can differ', () => {
@@ -175,12 +181,61 @@ test('edit ignores invalid values and unknown fields', () => {
   assert.deepEqual(e.sessions[0], s.sessions[0]);
 });
 
-test('edit changes the suggestion', () => {
+test('edit and delete recalculate the suggestion', () => {
+  const s = twoSessions(); // 2 min good, then 1 min didn't go well (same day)
+  const home = (st) => suggestTarget(sessionsFor(st, { dogId: 'charlie', contextId: 'home' }), { now: 6_000_000 });
+  assert.equal(home(s).kind, KINDS.HARD_CHOOSE);
+  const withOnset = setAnxietyOnset(s, s.sessions[1].id, 30);
+  assert.equal(home(withOnset).sec, 24);
+  const asGood = updateSession(s, s.sessions[1].id, { result: 'good' });
+  assert.equal(home(asGood).kind, KINDS.REPEAT); // one day only → no raise
+  assert.equal(home(deleteSession(s, s.sessions[1].id)).kind, KINDS.TOO_LITTLE);
+  // Computing a suggestion never rewrites the stored sessions.
+  const before = JSON.stringify(s);
+  home(s);
+  assert.equal(JSON.stringify(s), before);
+});
+
+// ---------- v0.4: time until worry, "don't count" ----------
+import { setAnxietyOnset, isValidOnset } from '../../src/training.js';
+
+test('time until worry is stored separately from the end time and validated', () => {
   const s = twoSessions();
-  const home = (st) => suggestNext(sessionsFor(st, { dogId: 'charlie', contextId: 'home' }));
-  assert.equal(home(s), 55);
-  const e = updateSession(s, s.sessions[1].id, { result: 'good' });
-  assert.equal(home(e), 75); // 60 s good, previous good -> +10% -> 66 -> 1:15 grid
+  const id = s.sessions[1].id; // 60 s, didn't go well
+  assert.equal(s.sessions[1].anxietyOnsetSec, undefined); // older sessions: simply missing = unknown
+  const set = setAnxietyOnset(s, id, 30);
+  assert.equal(set.sessions[1].anxietyOnsetSec, 30);
+  assert.equal(set.sessions[1].durationSec, 60);
+  assert.equal(set.sessions[1].endedAt, s.sessions[1].endedAt);
+  assert.equal(setAnxietyOnset(s, id, 0).sessions[1].anxietyOnsetSec, 0); // right away is valid
+  assert.equal(setAnxietyOnset(s, id, 61).sessions[1].anxietyOnsetSec, undefined); // after the end: rejected
+  assert.equal(setAnxietyOnset(s, id, -1).sessions[1].anxietyOnsetSec, undefined); // negative: rejected
+  assert.equal(setAnxietyOnset(set, id, null).sessions[1].anxietyOnsetSec, null); // back to unknown
+  assert.equal(isValidOnset(60, 60), true);
+});
+
+test('editing keeps worry time consistent with duration and result', () => {
+  const base = twoSessions();
+  const s = setAnxietyOnset(base, base.sessions[1].id, 50);
+  const id = s.sessions[1].id;
+  assert.equal(updateSession(s, id, { durationSec: 40 }).sessions[1].anxietyOnsetSec, null); // now after the end
+  assert.equal(updateSession(s, id, { durationSec: 90 }).sessions[1].anxietyOnsetSec, 50);
+  assert.equal(updateSession(s, id, { result: 'good' }).sessions[1].anxietyOnsetSec, null);
+});
+
+test('"don\'t count" flag only applies to sessions that went well', () => {
+  const s = twoSessions();
+  const e = updateSession(s, s.sessions[0].id, { uncertain: true });
+  assert.equal(e.sessions[0].uncertain, true);
+  assert.equal(updateSession(e, s.sessions[0].id, { uncertain: false }).sessions[0].uncertain, false);
+  assert.notEqual(updateSession(s, s.sessions[1].id, { uncertain: true }).sessions[1].uncertain, true);
+});
+
+test('reaching the target never sets the result by itself', () => {
+  let s = startSession(createInitialState(), { dogId: 'charlie', contextId: 'home', targetSec: 60, now: 0 });
+  s = endSession(s, 120_000);
+  assert.equal(s.pending.result, undefined);
+  assert.equal(s.sessions.length, 0);
 });
 
 test('delete removes only that session', () => {

@@ -41,6 +41,13 @@ export function parseBackup(text) {
     durationSec: Math.round(s.durationSec),
     targetSec: Number.isFinite(s.targetSec) && s.targetSec > 0 ? Math.round(s.targetSec) : null,
     result: s.result,
+    // Added in v0.4. Missing in older backups = unknown / counted.
+    anxietyOnsetSec:
+      s.result === RESULTS.BAD && Number.isFinite(s.anxietyOnsetSec) && s.anxietyOnsetSec >= 0 &&
+      s.anxietyOnsetSec <= s.durationSec
+        ? Math.round(s.anxietyOnsetSec)
+        : null,
+    uncertain: s.result === RESULTS.GOOD && s.uncertain === true,
   }));
   return { sessions };
 }
@@ -88,9 +95,15 @@ export function buildCsv(state) {
         s.targetSec ?? '',
         mmss(s.targetSec),
         s.result === RESULTS.GOOD ? 'Went well' : "Didn't go well",
+        s.anxietyOnsetSec ?? '',
+        mmss(s.anxietyOnsetSec),
+        s.uncertain ? 'No' : 'Yes',
       ];
     });
-  const header = ['Date', 'Time', 'Place', 'Actual (s)', 'Actual', 'Target (s)', 'Target', 'Result'];
+  const header = [
+    'Date', 'Time', 'Place', 'Actual (s)', 'Actual', 'Target (s)', 'Target', 'Result',
+    'Worried after (s)', 'Worried after', 'Counted for suggestions',
+  ];
   return ['sep=;', ...[header, ...rows].map((r) => r.map(csvCell).join(';'))].join('\r\n') + '\r\n';
 }
 

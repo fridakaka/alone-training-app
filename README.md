@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.3)
+# Alone Time – dog alone-training tracker (v0.4)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -9,29 +9,28 @@ place, target and actual duration, and result. Each place has its own graph, his
 suggested next duration.
 
 <p>
-<img src="docs/screenshots/6-car-suggestion.png" width="220" alt="Place picker and suggested target">
+<img src="docs/screenshots/9-shorter.png" width="220" alt="Time suggestion after a hard session">
 <img src="docs/screenshots/10-edit.png" width="220" alt="Edit a session">
-<img src="docs/screenshots/8-car-history.png" width="220" alt="Graph and history for Car">
+<img src="docs/screenshots/12-worry-question.png" width="220" alt="When did worry start?">
 </p>
 
-## Suggested duration
+## Time suggestion
 
-Per place, based on the most recent session there:
+Per place, from the recent logged history in that place only (last 7 days, max 5 sessions).
+It suggests a small increase only after a time has gone well several times on different
+days, keeps the time otherwise, suggests a shorter time after a hard session (below the
+point where worry started, if you enter it), and suggests a careful return after a break.
+When there is too little recent history, you choose an easy starting time.
+You can always change the time or train without a target.
 
-| Last session | Suggestion |
-|---|---|
-| Went well | +10 % |
-| Went well, right after one that didn't | same duration again (grow after two good in a row) |
-| Went well, but ended before 90 % of its target | same target again |
-| Didn't go well | −10 % |
-
-Rounded to a natural value (5 s under 1 min, 15 s up to 5 min, 30 s up to 15 min,
-1 min up to 1 h, then 5 min). The target is only a note: the timer always runs until you
-tap End training. Details: [docs/PLAN-v0.2.md](docs/PLAN-v0.2.md), [docs/PLAN-v0.3.md](docs/PLAN-v0.3.md).
+Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
+The app is a training journal: it can't tell how long a dog can safely be alone.
 
 ## Editing and backup
 
-- Tap a session in *Previous sessions* to change its place, result, duration or target, or delete it.
+- After *Didn't go well* the app asks (optionally) roughly when worry started – or tap *Don't know*.
+- Tap a session in *Previous sessions* to change its place, result, duration, target, worry time,
+  mark it "don't count as progress", or delete it.
 - **Your data** (bottom of the screen): *Save backup* (a file you can keep in Files/iCloud/mail),
   *Export for Excel*, and *Restore from backup* (adds sessions from a backup; never removes any).
 
@@ -59,7 +58,8 @@ See [docs/PLAN.md](docs/PLAN.md) for the plain-language explanation and
 | `styles.css` | Look & feel, light and dark mode |
 | `src/app.js` | Connects buttons to logic and redraws the screen |
 | `src/training.js` | The rules: start, end, rate, places, durations (no screen code) |
-| `src/progression.js` | Suggested next duration and rounding |
+| `src/suggestion.js` | Time suggestion model (see docs/SUGGESTION-MODEL.md) |
+| `src/progression.js` | Rounding, −/+ steps and time formatting |
 | `src/backup.js` | Backup file, restore (merge) and Excel export |
 | `src/store.js` | Saves/loads data on the phone, upgrades v0.1 data |
 | `src/chart.js` | Draws the graph |

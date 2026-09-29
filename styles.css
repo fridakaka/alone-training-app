@@ -326,3 +326,18 @@ button.row:focus-visible { outline: 3px solid var(--good); outline-offset: -3px;
 .sheet-actions .btn { min-height: 56px; }
 .btn-link.danger { color: var(--bad); }
 .btn-link.danger.armed { font-weight: 700; }
+
+/* ---------- v0.4: worry follow-up, edit fields, help ---------- */
+.label.small { font-size: 14px; color: var(--ink-3); margin-top: -8px; }
+.time-inputs.center { justify-content: center; }
+.form-error { margin: 0; min-height: 1.2em; font-size: 14px; color: var(--bad); text-align: center; }
+#view-onset .question { font-size: 22px; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; color: var(--ink); cursor: pointer; }
+.check input { width: 22px; height: 22px; margin: 0; flex: none; accent-color: var(--primary); }
+.check .muted { color: var(--ink-3); font-weight: 400; }
+.help summary { cursor: pointer; color: var(--ink); font-weight: 500; padding: 6px 0; }
+.help summary:focus-visible { outline: 3px solid var(--good); outline-offset: 2px; border-radius: 6px; }
+.help p, .help li { font-size: 15px; color: var(--ink-2); }
+.help ul { padding-left: 20px; margin: 8px 0; }
+.help li { margin: 6px 0; }
+.help .muted { font-size: 14px; color: var(--ink-3); }

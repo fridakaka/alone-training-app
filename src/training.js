@@ -74,6 +74,11 @@ export function discardPending(state) {
   return { ...state, pending: null };
 }
 
+// Optional session fields (older sessions simply don't have them):
+// - anxietyOnsetSec: roughly when the dog started to get worried, in seconds from the start.
+//   Only for "didn't go well". Missing/null = unknown (never treated as 0).
+// - uncertain: true = "don't count as progress" (unsure or logged wrong). Only for "went well".
+
 // Edit a saved session. Only these fields can change; invalid values are ignored.
 export function updateSession(state, id, changes) {
   const patch = {};
@@ -83,15 +88,40 @@ export function updateSession(state, id, changes) {
   }
   if ('targetSec' in changes) patch.targetSec = normalizeTarget(changes.targetSec);
   if (state.contexts.some((c) => c.id === changes.contextId)) patch.contextId = changes.contextId;
+  if ('uncertain' in changes) patch.uncertain = changes.uncertain === true;
   return {
     ...state,
     sessions: state.sessions.map((s) => {
       if (s.id !== id) return s;
       const next = { ...s, ...patch };
       if ('durationSec' in patch) next.endedAt = next.startedAt + next.durationSec * 1000;
+      if ('anxietyOnsetSec' in changes) {
+        if (changes.anxietyOnsetSec == null) next.anxietyOnsetSec = null;
+        else if (isValidOnset(changes.anxietyOnsetSec, next.durationSec)) {
+          next.anxietyOnsetSec = Math.round(changes.anxietyOnsetSec);
+        }
+      }
+      // Keep the data consistent after other edits.
+      if (next.result === RESULTS.GOOD) {
+        if (next.anxietyOnsetSec != null) next.anxietyOnsetSec = null;
+      } else {
+        if (next.uncertain) next.uncertain = false;
+        if (next.anxietyOnsetSec != null && !isValidOnset(next.anxietyOnsetSec, next.durationSec)) {
+          next.anxietyOnsetSec = null;
+        }
+      }
       return next;
     }),
   };
+}
+
+// Worry cannot start before the session or after it ended.
+export function isValidOnset(sec, durationSec) {
+  return Number.isFinite(sec) && sec >= 0 && sec <= durationSec;
+}
+
+export function setAnxietyOnset(state, id, sec) {
+  return updateSession(state, id, { anxietyOnsetSec: sec });
 }
 
 export function deleteSession(state, id) {

@@ -1,5 +1,7 @@
 # Version 0.3 – implementation plan
 
+> **Note (v0.4):** the suggestion rules in this file are replaced by [SUGGESTION-MODEL.md](SUGGESTION-MODEL.md). Kept for history.
+
 Implements the six "future" items listed after v0.2. Incremental: same look, same flow.
 
 ## 1. Edit or delete a saved session

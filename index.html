@@ -29,7 +29,7 @@
       </div>
 
       <div class="target" aria-live="polite">
-        <p id="target-label" class="target-label">Suggested today</p>
+        <p id="target-label" class="target-label">Time suggestion</p>
         <div class="stepper">
           <button id="target-down" class="step-btn" type="button" aria-label="Shorter target">−</button>
           <output id="target-value" class="target-value" for="target-down target-up">No target</output>
@@ -59,6 +59,22 @@
         <button id="bad-btn" class="btn btn-bad" type="button">Didn't go well</button>
       </div>
       <button id="discard-btn" class="btn-link" type="button">Discard this session</button>
+    </section>
+
+    <!-- State 3b: optional follow-up after "Didn't go well" -->
+    <section id="view-onset" class="panel" hidden>
+      <p class="label">Saved · <strong id="onset-duration"></strong> · didn't go well</p>
+      <h2 class="question">Roughly when did <span id="onset-dog">Charlie</span> start to get worried?</h2>
+      <p class="label small">Optional. Minutes and seconds from the start.</p>
+      <div class="time-inputs center">
+        <label><input id="onset-min" type="number" inputmode="numeric" min="0" max="999" aria-label="Minutes"> min</label>
+        <label><input id="onset-sec" type="number" inputmode="numeric" min="0" max="59" aria-label="Seconds"> s</label>
+      </div>
+      <p id="onset-error" class="form-error" role="alert"></p>
+      <div class="choices">
+        <button id="onset-unknown" class="btn btn-quiet" type="button">Don't know</button>
+        <button id="onset-save" class="btn btn-primary" type="button">Save</button>
+      </div>
     </section>
 
     <section id="progress" class="card" aria-labelledby="progress-title">
@@ -96,6 +112,32 @@
       </div>
       <p id="data-status" class="data-status" role="status"></p>
     </section>
+
+    <section id="help-section" class="card" aria-labelledby="help-title">
+      <h2 id="help-title">Help</h2>
+      <details class="help">
+        <summary>How is the time suggestion calculated?</summary>
+        <p>The app looks only at sessions logged in the chosen place (Home, Car or Outside shop),
+          and only at the 5 most recent ones from the last 7 days. Newer sessions count more, and
+          several sessions on the same day count together as one day.</p>
+        <ul>
+          <li><strong>Small increase</strong> (about +10 %) only when a time has gone well
+            several times, on at least two different days.</li>
+          <li><strong>Same time</strong> while a time isn't yet stable. One unusually long good
+            session helps a little, but does not become the new level.</li>
+          <li><strong>Shorter</strong> after a session that didn't go well: below the point where
+            worry started, if you entered it. This holds until two good sessions have followed.</li>
+          <li><strong>After a break</strong> (nothing logged in 7 days) the app suggests a careful
+            restart at half the earlier level, or lets you choose an easy start. Your history is kept.</li>
+          <li>When there is too little recent history, choose an easy starting time yourself.</li>
+        </ul>
+        <p>You can always change the time, or train without a target. The timer never stops by
+          itself, and reaching the target never counts as "went well" automatically.</p>
+        <p class="muted">The app only knows the sessions you log. It is a training journal: it
+          can't tell how long your dog can safely be alone and does not replace an individual
+          training plan. The rules are preliminary.</p>
+      </details>
+    </section>
   </main>
 
   <dialog id="edit-dialog" class="sheet" aria-labelledby="edit-title">
@@ -131,6 +173,21 @@
           <label><input id="edit-tgt-sec" type="number" inputmode="numeric" min="0" max="59"> s</label>
         </div>
       </fieldset>
+
+      <fieldset id="edit-onset-field">
+        <legend>Worried after <span class="muted">(leave empty if you don't know)</span></legend>
+        <div class="time-inputs">
+          <label><input id="edit-onset-min" type="number" inputmode="numeric" min="0" max="999"> min</label>
+          <label><input id="edit-onset-sec" type="number" inputmode="numeric" min="0" max="59"> s</label>
+        </div>
+      </fieldset>
+
+      <label id="edit-uncertain-field" class="check">
+        <input id="edit-uncertain" type="checkbox">
+        <span>Don't count as progress <span class="muted">(unsure or logged wrong)</span></span>
+      </label>
+
+      <p id="edit-error" class="form-error" role="alert"></p>
 
       <div class="sheet-actions">
         <button id="edit-cancel" type="button" class="btn btn-quiet">Cancel</button>

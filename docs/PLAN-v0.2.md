@@ -1,5 +1,7 @@
 # Version 0.2 – implementation plan
 
+> **Note (v0.4):** the suggestion rules in this file are replaced by [SUGGESTION-MODEL.md](SUGGESTION-MODEL.md). Kept for history.
+
 Incremental on top of v0.1. Same files, same look, same one-screen flow.
 Nothing is redesigned; the pieces below are added around what exists.
 

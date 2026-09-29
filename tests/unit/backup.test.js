@@ -11,7 +11,42 @@ const sess = (id, extra = {}) => ({
 test('backup round-trip restores all sessions exactly', () => {
   const state = { ...createInitialState(), sessions: [sess('s1'), sess('s2', { contextId: 'car', targetSec: 120, result: 'bad' })] };
   const { sessions } = parseBackup(buildBackup(state));
-  assert.deepEqual(sessions, state.sessions);
+  // Older sessions get the v0.4 fields as "unknown" / "counted" – nothing else changes.
+  assert.deepEqual(sessions, state.sessions.map((s) => ({ ...s, anxietyOnsetSec: null, uncertain: false })));
+});
+
+test('backup keeps time until worry and "don\'t count"', () => {
+  const state = {
+    ...createInitialState(),
+    sessions: [sess('s1', { result: 'bad', anxietyOnsetSec: 30 }), sess('s2', { uncertain: true })],
+  };
+  const { sessions } = parseBackup(buildBackup(state));
+  assert.equal(sessions[0].anxietyOnsetSec, 30);
+  assert.equal(sessions[1].uncertain, true);
+  const { state: merged } = mergeSessions(createInitialState(), sessions);
+  assert.equal(merged.sessions[0].anxietyOnsetSec, 30);
+});
+
+test('backup: invalid worry times are read as unknown, never as 0', () => {
+  const file = JSON.stringify({ sessions: [
+    sess('s1', { result: 'bad', anxietyOnsetSec: 999 }), // after the end (90 s)
+    sess('s2', { result: 'bad', anxietyOnsetSec: -4 }),
+    sess('s3', { result: 'bad' }),
+    sess('s4', { result: 'good', anxietyOnsetSec: 20 }), // only meaningful for "didn't go well"
+  ] });
+  assert.deepEqual(parseBackup(file).sessions.map((s) => s.anxietyOnsetSec), [null, null, null, null]);
+});
+
+test('existing v0.3 backup files still restore', () => {
+  const v03 = JSON.stringify({
+    app: 'alone-time', exportedAt: '2026-09-29T10:00:00.000Z', schemaVersion: 2,
+    sessions: [{ id: 'old', dogId: 'charlie', contextId: 'car', startedAt: 1, endedAt: 60001, durationSec: 60, targetSec: 45, result: 'good' }],
+  });
+  const [s] = parseBackup(v03).sessions;
+  assert.equal(s.contextId, 'car');
+  assert.equal(s.targetSec, 45);
+  assert.equal(s.anxietyOnsetSec, null);
+  assert.equal(s.uncertain, false);
 });
 
 test('restore merges: existing sessions are kept, only new ones are added', () => {
@@ -47,10 +82,14 @@ test('Excel export has one row per session, oldest first, semicolon separated', 
   const state = { ...createInitialState(), sessions: [sess('s2', { contextId: 'outside-shop', targetSec: 120, result: 'bad' }), sess('s1')] };
   const lines = buildCsv(state).trim().split('\r\n');
   assert.equal(lines[0], 'sep=;');
-  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result');
+  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions');
   assert.equal(lines.length, 4);
-  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well$/);
-  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well$/);
+  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well;;;Yes$/);
+  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;Yes$/);
+  const withNew = { ...state, sessions: [sess('s3', { result: 'bad', anxietyOnsetSec: 45 }), sess('s4', { uncertain: true })] };
+  const [, , a, b] = buildCsv(withNew).trim().split('\r\n');
+  assert.match(a, /;Didn't go well;45;0:45;Yes$/);
+  assert.match(b, /;Went well;;;No$/);
 });
 
 test('backup file name contains the date', () => {

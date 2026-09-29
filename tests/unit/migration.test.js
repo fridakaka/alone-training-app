@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadState, saveState, KEY, V1_KEY } from '../../src/store.js';
 import { sessionsFor } from '../../src/training.js';
-import { suggestNext } from '../../src/progression.js';
+import { suggestTarget, KINDS } from '../../src/suggestion.js';
 
 function memoryStorage(init = {}) {
   const m = new Map(Object.entries(init));
@@ -38,9 +38,14 @@ test('v0.1 sessions are migrated to Home with all fields intact', () => {
   assert.deepEqual(s.contexts.map((c) => c.id), ['home', 'car', 'outside-shop']);
   assert.equal(s.selectedContextId, 'home');
   // Old data immediately drives the Home suggestion, other contexts start empty.
-  // Last: 4:00 went well right after one that didn't -> same again (v0.3 rule).
-  assert.equal(suggestNext(sessionsFor(s, { dogId: 'charlie', contextId: 'home' })), 240);
-  assert.equal(suggestNext(sessionsFor(s, { dogId: 'charlie', contextId: 'car' })), null);
+  // Old sessions keep working in the current model (missing new fields = unknown / counted).
+  const now = 3000 + 3600e3;
+  const home = suggestTarget(sessionsFor(s, { dogId: 'charlie', contextId: 'home' }), { now });
+  // 1:30 didn't go well (onset unknown), only one good session after it → still in force;
+  // the earlier, clearly shorter 1:00 that went well is used cautiously: 80 % = 48 s → 0:45.
+  assert.equal(home.kind, KINDS.EASIER);
+  assert.equal(home.sec, 45);
+  assert.equal(suggestTarget(sessionsFor(s, { dogId: 'charlie', contextId: 'car' }), { now }).kind, KINDS.NONE);
 });
 
 test('v0.1 sessions without a contextId still land in Home', () => {

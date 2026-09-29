@@ -10,22 +10,16 @@ import {
   selectContext,
   updateSession,
   deleteSession,
+  setAnxietyOnset,
+  isValidOnset,
   formatTimer,
   formatDuration,
   RESULTS,
 } from './training.js';
 import { loadState, saveState } from './store.js';
-import { renderChart, MAX_BARS } from './chart.js';
-import {
-  suggestDetailed,
-  plusTenLast,
-  repeatLast,
-  lastSession,
-  stepUp,
-  stepDown,
-  formatTarget,
-  MIN_TARGET_SEC,
-} from './progression.js';
+import { renderChart, resultText, MAX_BARS } from './chart.js';
+import { stepUp, stepDown, formatTarget, MIN_TARGET_SEC } from './progression.js';
+import { suggestTarget, KINDS } from './suggestion.js';
 import { buildBackup, parseBackup, mergeSessions, buildCsv, backupFileName } from './backup.js';
 
 const $ = (id) => document.getElementById(id);
@@ -78,28 +72,82 @@ function setDraft(value) {
 }
 
 // What the ready screen currently offers for the selected context.
+// The suggestion is always derived from the history – never stored.
 function currentTarget() {
-  const sessions = sessionsFor(state, current());
-  const detail = suggestDetailed(sessions);
-  const suggested = detail?.sec ?? null;
+  const suggestion = suggestTarget(sessionsFor(state, current()), { now: Date.now() });
   const ctx = contextId();
-  const value = ctx in draftTargets ? draftTargets[ctx] : suggested;
-  return {
-    sessions,
-    suggested,
-    reason: detail?.reason,
-    repeat: repeatLast(sessions),
-    plus: plusTenLast(sessions),
-    value,
-  };
+  const value = ctx in draftTargets ? draftTargets[ctx] : suggestion.sec;
+  return { suggestion, suggested: suggestion.sec, repeat: suggestion.repeatSec, value };
 }
+
+// One main, plain-language explanation per kind of suggestion.
+const EXPLANATION = {
+  [KINDS.RAISE]: 'Several calm sessions at a similar time.',
+  [KINDS.REPEAT]: 'Keep this time until it feels stable.',
+  [KINDS.EASIER]: 'Shorter after the last session.',
+  [KINDS.HARD_CHOOSE]: 'The last session was hard — choose an easy starting time.',
+  [KINDS.WORRIED_AT_ONCE]: 'Worry started right away last time — choose a very easy start.',
+  [KINDS.RETURN]: 'Careful return after a break — confirm with easier sessions.',
+  [KINDS.RETURN_CHOOSE]: 'Break since the last logged session — choose an easy starting time.',
+  [KINDS.TOO_LITTLE]: 'Too little recent history — choose an easy starting time.',
+  [KINDS.NONE]: 'No sessions logged here yet — choose an easy starting time.',
+};
 
 $('end-btn').addEventListener('click', () => {
   update(endSession(state, Date.now()));
 });
 
 $('good-btn').addEventListener('click', () => update(recordResult(state, RESULTS.GOOD)));
-$('bad-btn').addEventListener('click', () => update(recordResult(state, RESULTS.BAD)));
+$('bad-btn').addEventListener('click', () => {
+  // Saved right away, so nothing is lost; the follow-up question is optional.
+  const next = recordResult(state, RESULTS.BAD);
+  onsetFor = next.sessions[next.sessions.length - 1]?.id ?? null;
+  clearOnsetInputs();
+  update(next);
+});
+
+// ---------- optional follow-up: when did worry start? ----------
+
+let onsetFor = null; // id of the session just saved as "didn't go well" (memory only)
+
+const readMinSec = (minId, secId) => {
+  const mRaw = $(minId).value.trim();
+  const sRaw = $(secId).value.trim();
+  if (mRaw === '' && sRaw === '') return { empty: true };
+  const m = Number(mRaw || 0);
+  const sec = Number(sRaw || 0);
+  if (!Number.isInteger(m) || !Number.isInteger(sec) || m < 0 || sec < 0 || sec > 59) {
+    return { error: 'Use whole minutes and 0–59 seconds.' };
+  }
+  return { value: m * 60 + sec };
+};
+
+function clearOnsetInputs() {
+  $('onset-min').value = '';
+  $('onset-sec').value = '';
+  $('onset-error').textContent = '';
+}
+
+$('onset-unknown').addEventListener('click', () => {
+  onsetFor = null;
+  render();
+});
+
+$('onset-save').addEventListener('click', () => {
+  const session = state.sessions.find((x) => x.id === onsetFor);
+  const input = readMinSec('onset-min', 'onset-sec');
+  if (input.error) return void ($('onset-error').textContent = input.error);
+  if (!session || input.empty) {
+    onsetFor = null; // saving without a time = unknown
+    return render();
+  }
+  if (!isValidOnset(input.value, session.durationSec)) {
+    $('onset-error').textContent = `That's longer than the session (${formatTarget(session.durationSec)}).`;
+    return;
+  }
+  onsetFor = null;
+  update(setAnxietyOnset(state, session.id, input.value));
+});
 $('discard-btn').addEventListener('click', () => update(discardPending(state)));
 
 // Tap a bar to see its details.
@@ -120,7 +168,10 @@ let tick = null;
 
 function render() {
   const mode = state.active ? 'training' : state.pending ? 'result' : 'ready';
-  $('view-ready').hidden = mode !== 'ready';
+  if (mode !== 'ready' || !state.sessions.some((x) => x.id === onsetFor)) onsetFor = null;
+  const askOnset = mode === 'ready' && onsetFor != null;
+  $('view-onset').hidden = !askOnset;
+  $('view-ready').hidden = mode !== 'ready' || askOnset;
   $('view-training').hidden = mode !== 'training';
   $('view-result').hidden = mode !== 'result';
   document.body.dataset.mode = mode;
@@ -133,6 +184,11 @@ function render() {
 
   clearInterval(tick);
   if (mode === 'ready') renderReady();
+  if (askOnset) {
+    const s = state.sessions.find((x) => x.id === onsetFor);
+    $('onset-duration').textContent = formatDuration(s.durationSec);
+    $('onset-dog').textContent = state.dogs[0].name;
+  }
   if (mode === 'training') {
     renderTimer();
     tick = setInterval(renderTimer, 250);
@@ -159,26 +215,22 @@ function renderReady() {
     btn.setAttribute('aria-pressed', String(btn.dataset.context === state.selectedContextId));
   }
 
-  const { sessions, suggested, reason, repeat, plus, value } = currentTarget();
-  const last = lastSession(sessions);
+  const { suggestion, suggested, repeat, value } = currentTarget();
   const isSuggested = suggested != null && value === suggested;
 
   $('target-label').textContent = isSuggested
-    ? 'Suggested today'
+    ? 'Time suggestion'
     : value == null
       ? suggested == null
-        ? 'No suggestion yet'
-        : 'Target'
+        ? 'Choose a starting time'
+        : 'No target'
       : 'Your target';
   $('target-value').textContent = value == null ? 'No target' : formatTarget(value);
   $('target-value').classList.toggle('none', value == null);
   $('target-down').disabled = value == null || value <= MIN_TARGET_SEC;
 
-  $('target-basis').textContent = last
-    ? `Last ${contextName(contextId())} session: ${formatDuration(last.durationSec)}, ${
-        last.result === RESULTS.GOOD ? 'went well' : "didn't go well"
-      }${isSuggested ? REASON_TEXT[reason] : ''}`
-    : `A suggestion appears after your first ${contextName(contextId())} session.`;
+  $('target-basis').textContent = EXPLANATION[suggestion.kind] ?? '';
+  $('target-basis').dataset.kind = suggestion.kind;
 
   const chips = [];
   if (suggested != null && value !== suggested) {
@@ -187,21 +239,11 @@ function renderReady() {
   if (repeat != null && value !== repeat && repeat !== suggested) {
     chips.push([repeat, `Repeat ${formatTarget(repeat)}`]);
   }
-  if (plus != null && value !== plus && plus !== suggested) {
-    chips.push([plus, `+10% ${formatTarget(plus)}`]);
-  }
   if (value != null) chips.push(['none', 'No target']);
   $('target-chips').innerHTML = chips
     .map(([v, label]) => `<button type="button" class="chip" data-target="${v}">${label}</button>`)
     .join('');
 }
-
-const REASON_TEXT = {
-  up: ' · +10%',
-  down: ' · −10%',
-  consolidate: ' · first good after a setback, same again',
-  early: ' · ended before target, same target',
-};
 
 function renderTimer() {
   const elapsed = elapsedSeconds(state.active, Date.now());
@@ -241,7 +283,6 @@ function renderProgress() {
 
   $('history').innerHTML = visible
     .map((s) => {
-      const good = s.result === RESULTS.GOOD;
       const when = new Date(s.startedAt).toLocaleString(undefined, {
         weekday: 'short',
         day: 'numeric',
@@ -254,11 +295,11 @@ function renderProgress() {
         <button type="button" class="row" data-id="${s.id}" ${editable ? '' : 'disabled'}
           aria-label="Edit session: ${when}, ${formatDuration(s.durationSec)}${
             s.targetSec ? `, target ${formatTarget(s.targetSec)}` : ''
-          }, ${good ? 'went well' : "didn't go well"}">
+          }, ${resultText(s).toLowerCase()}">
           <span class="when">${when}</span>
           <span class="dur">${formatDuration(s.durationSec)}</span>
           ${s.targetSec ? `<span class="planned">target ${formatTarget(s.targetSec)}</span>` : ''}
-          <span class="tag ${s.result}"><i class="swatch ${s.result}"></i>${good ? 'Went well' : "Didn't go well"}</span>
+          <span class="tag ${s.result}"><i class="swatch ${s.result}"></i>${resultText(s)}</span>
         </button>
       </li>`;
     })
@@ -315,6 +356,11 @@ function openEditor(id) {
   $('edit-dur-sec').value = s.durationSec % 60;
   $('edit-tgt-min').value = s.targetSec ? Math.floor(s.targetSec / 60) : '';
   $('edit-tgt-sec').value = s.targetSec ? s.targetSec % 60 : '';
+  const hasOnset = Number.isFinite(s.anxietyOnsetSec);
+  $('edit-onset-min').value = hasOnset ? Math.floor(s.anxietyOnsetSec / 60) : '';
+  $('edit-onset-sec').value = hasOnset ? s.anxietyOnsetSec % 60 : '';
+  $('edit-uncertain').checked = s.uncertain === true;
+  $('edit-error').textContent = '';
   renderEditor();
   dialog.showModal();
 }
@@ -326,6 +372,8 @@ function renderEditor() {
   for (const b of dialog.querySelectorAll('[data-result]')) {
     b.setAttribute('aria-pressed', String(b.dataset.result === editing.result));
   }
+  $('edit-onset-field').hidden = editing.result !== RESULTS.BAD;
+  $('edit-uncertain-field').hidden = editing.result !== RESULTS.GOOD;
   $('edit-delete').textContent = deleteArmed ? 'Tap again to delete' : 'Delete session';
   $('edit-delete').classList.toggle('armed', deleteArmed);
 }
@@ -354,14 +402,24 @@ $('edit-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const durationSec = num('edit-dur-min') * 60 + Math.min(59, num('edit-dur-sec'));
   const targetSec = num('edit-tgt-min') * 60 + Math.min(59, num('edit-tgt-sec'));
-  update(
-    updateSession(state, editing.id, {
-      result: editing.result,
-      contextId: editing.contextId,
-      durationSec,
-      targetSec: targetSec || null,
-    }),
-  );
+  const changes = {
+    result: editing.result,
+    contextId: editing.contextId,
+    durationSec,
+    targetSec: targetSec || null,
+  };
+  if (editing.result === RESULTS.BAD) {
+    const onset = readMinSec('edit-onset-min', 'edit-onset-sec');
+    if (onset.error) return void ($('edit-error').textContent = onset.error);
+    if (!onset.empty && !isValidOnset(onset.value, durationSec)) {
+      $('edit-error').textContent = 'Worry can\'t start after the session ended.';
+      return;
+    }
+    changes.anxietyOnsetSec = onset.empty ? null : onset.value;
+  } else {
+    changes.uncertain = $('edit-uncertain').checked;
+  }
+  update(updateSession(state, editing.id, changes));
   dialog.close();
 });
 
@@ -457,3 +515,7 @@ render();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+// Clear an error message as soon as the user corrects the value.
+$('edit-form').addEventListener('input', () => ($('edit-error').textContent = ''));
+$('view-onset').addEventListener('input', () => ($('onset-error').textContent = ''));
