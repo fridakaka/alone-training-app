@@ -136,7 +136,7 @@ try {
   await step('Home after a hard session with unknown worry time: no time suggestion, user chooses', async () => {
     assert.equal(await text('#target-label'), 'Choose a starting time');
     assert.equal(await text('#target-value'), 'No target');
-    assert.equal(await text('#target-basis'), 'The last session was hard — choose an easy starting time.');
+    assert.equal(await text('#target-basis'), 'The last session was hard — choose a short, easy time.');
   });
 
   await step('switching to Car: empty history, no suggestion, filtered graph', async () => {
@@ -144,7 +144,7 @@ try {
     assert.equal(await text('h1'), 'Charlie · Car');
     assert.equal(await page.getAttribute('#context-picker .seg >> nth=1', 'aria-pressed'), 'true');
     assert.equal(await text('#target-label'), 'Choose a starting time');
-    assert.equal(await text('#target-basis'), 'No sessions logged here yet — choose an easy starting time.');
+    assert.equal(await text('#target-basis'), 'No sessions logged here yet — choose a short, easy time.');
     assert.ok(await page.isVisible('#empty'));
     assert.equal(await page.locator('.chart .bar').count(), 0);
     await page.screenshot({ path: OUT + '5-car-empty.png', fullPage: true });
@@ -156,18 +156,17 @@ try {
     assert.equal(await page.locator('#history .planned').count(), 0);
   });
 
-  await step('one Car session is too little history, but Repeat 5:00 is one tap away', async () => {
-    assert.equal(await text('#target-label'), 'Choose a starting time');
-    assert.equal(await text('#target-basis'), 'Too little recent history — choose an easy starting time.');
-    assert.match(await text('#target-chips'), /Repeat 5:00/);
+  await step('one Car session is a limited basis: repeat 5:00', async () => {
+    assert.equal(await text('#target-label'), 'Suggestion today');
+    assert.equal(await text('#target-value'), '5:00');
+    assert.equal(await text('#target-basis'), 'Limited basis — repeat 5:00.');
   });
 
-  await step('choosing Repeat, then manual − changes the target', async () => {
-    await page.locator('.chip', { hasText: 'Repeat' }).tap();
-    assert.equal(await text('#target-label'), 'Your target');
-    assert.equal(await text('#target-value'), '5:00');
+  await step('manual − changes the target; "Use suggestion" brings it back', async () => {
     await page.tap('#target-down');
+    assert.equal(await text('#target-label'), 'Your target');
     assert.equal(await text('#target-value'), '4:45');
+    assert.match(await text('#target-chips'), /Use suggestion 5:00/);
   });
 
   await step('target is shown while training but never stops the timer', async () => {
@@ -199,10 +198,10 @@ try {
     assert.equal(await page.locator('.chart .target').count(), 1);
   });
 
-  await step('two good Car sessions on the same day → keep the time, no raise', async () => {
-    assert.equal(await text('#target-label'), 'Time suggestion');
-    assert.equal(await text('#target-value'), '6:00');
-    assert.equal(await text('#target-basis'), 'Keep this time until it feels stable.');
+  await step('two good Car sessions on the same day → the time both support, no raise', async () => {
+    assert.equal(await text('#target-label'), 'Suggestion today');
+    assert.equal(await text('#target-value'), '5:00'); // not the longer 6 min 10 s
+    assert.equal(await text('#target-basis'), 'Limited basis — repeat 5:00.');
     await page.screenshot({ path: OUT + '6-car-suggestion.png', fullPage: true });
   });
 
@@ -226,13 +225,13 @@ try {
 
   await step('a recent hard session overrides earlier success: suggestion stays below the worry time', async () => {
     assert.equal(await text('#target-value'), '0:16'); // 80 % of 0:20
-    assert.equal(await text('#target-basis'), 'Shorter after the last session.');
+    assert.equal(await text('#target-basis'), 'The last session was hard — shorter suggestion.');
     await page.screenshot({ path: OUT + '9-shorter.png', fullPage: true });
   });
 
   await step('Outside shop is independent: nothing borrowed from Home or Car', async () => {
     await pick('Outside shop');
-    assert.equal(await text('#target-basis'), 'No sessions logged here yet — choose an easy starting time.');
+    assert.equal(await text('#target-basis'), 'No sessions logged here yet — choose a short, easy time.');
     await session(120, 'bad');
     assert.equal(await text('#target-label'), 'Choose a starting time');
     assert.equal(await historyCount(), 1);
@@ -258,12 +257,12 @@ try {
     await pick('Home');
     await nextDay();
     await session(30, 'good');
-    assert.equal(await text('#target-basis'), 'The last session was hard — choose an easy starting time.'); // 1 good isn't enough
+    assert.equal(await text('#target-basis'), 'Limited basis — repeat 0:30.'); // one session: repeat, no raise
     await nextDay();
     await session(30, 'good');
-    assert.equal(await text('#target-label'), 'Time suggestion');
+    assert.equal(await text('#target-label'), 'Suggestion today');
     assert.equal(await text('#target-value'), '0:35');
-    assert.equal(await text('#target-basis'), 'Several calm sessions at a similar time.');
+    assert.equal(await text('#target-basis'), 'Several calm sessions on different days — small increase.');
     await page.screenshot({ path: OUT + '8-raise.png', fullPage: true });
   });
 
@@ -343,6 +342,7 @@ try {
   await step('Help explains how the suggestion is calculated', async () => {
     await page.tap('#help-section summary');
     assert.match(await text('#help-section'), /last 7 days/);
+    assert.match(await text('#help-section'), /Earlier long sessions stay in\s+your history, but don't automatically decide today's time/);
     assert.match(await text('#help-section'), /can't tell how long your dog can safely be alone/);
   });
 
@@ -486,6 +486,102 @@ try {
     assert.equal((await p.textContent('#history-more')).trim(), 'Show fewer');
     await p.tap('#history-more');
     assert.equal(await p.locator('#history li').count(), 10);
+    await c.close();
+  });
+
+  await step('type a time directly: from "No target", + asks for a time; 1-second targets work', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-10-01T09:00:00') });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    assert.equal(await t('#target-value'), 'No target');
+    await p.tap('#target-up');
+    assert.ok(await p.isVisible('#target-edit'));
+    assert.equal(await t('#target-value'), 'No target'); // no guessed 1:00
+    assert.equal(await p.evaluate(() => document.activeElement.id), 'target-sec');
+    await p.tap('#target-set');
+    assert.match(await t('#target-error'), /at least 1 second/);
+    await p.fill('#target-sec', '3');
+    await p.press('#target-sec', 'Enter'); // keyboard works
+    assert.ok(await p.isHidden('#target-edit'));
+    assert.equal(await t('#target-value'), '0:03');
+    assert.equal(await t('#target-label'), 'Your target');
+    await p.tap('#target-down');
+    await p.tap('#target-down');
+    assert.equal(await t('#target-value'), '0:01');
+    assert.ok(await p.isDisabled('#target-down'));
+    await p.tap('#target-value'); // tapping the time opens the input too
+    assert.equal(await p.inputValue('#target-sec'), '1');
+    await p.fill('#target-min', '2');
+    await p.fill('#target-sec', '30');
+    await p.tap('#target-set');
+    assert.equal(await t('#target-value'), '2:30');
+    assert.match(await p.getAttribute('#target-value', 'aria-label'), /Target 2:30\. Tap to type a time\./);
+    await p.screenshot({ path: OUT + '13-typed-time.png', fullPage: true });
+    // A 2-second session that went well is saved and used.
+    await p.tap('#target-value');
+    await p.fill('#target-min', '');
+    await p.fill('#target-sec', '2');
+    await p.tap('#target-set');
+    await p.tap('#start-btn');
+    await p.clock.runFor(2_000);
+    await p.tap('#end-btn');
+    await p.tap('#good-btn');
+    assert.match(await t('#history li:first-child .dur'), /^2 s$/);
+    assert.equal(await t('#history li:first-child .planned'), 'target 0:02');
+    assert.equal(await t('#target-basis'), 'Limited basis — repeat 0:02.');
+    await c.close();
+  });
+
+  await step('after a break: no automatic time, earlier level only as history; a new 10 s session becomes the anchor', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-10-20T18:00:00') });
+    await p.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      const day = (d) => new Date(2026, 9, 20 - d, 10).getTime();
+      const sessions = [16, 15, 14].map((d, i) => ({
+        id: 'old' + i, dogId: 'charlie', contextId: 'home', startedAt: day(d), endedAt: day(d) + 7_200_000,
+        durationSec: 7200, targetSec: null, result: 'good',
+      }));
+      localStorage.setItem('alone-training:v2', JSON.stringify({
+        schemaVersion: 2, dogs: [{ id: 'charlie', name: 'Charlie' }],
+        contexts: [{ id: 'home', name: 'Home' }, { id: 'car', name: 'Car' }, { id: 'outside-shop', name: 'Outside shop' }],
+        selectedContextId: 'home', active: null, pending: null, sessions,
+      }));
+    });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    assert.equal(await t('#target-label'), 'Choose a starting time');
+    assert.equal(await t('#target-value'), 'No target');
+    assert.equal(await t('#target-basis'), "It's been a while. Choose a short time that feels easy today.");
+    assert.equal(await t('#earlier-level'), "Earlier stable level: 2:00:00 (history, not today's target)");
+    await p.screenshot({ path: OUT + '14-after-break.png', fullPage: true });
+    await p.tap('#target-up');
+    await p.fill('#target-sec', '10');
+    await p.tap('#target-set');
+    await p.tap('#start-btn');
+    await p.clock.runFor(10_000);
+    await p.tap('#end-btn');
+    await p.tap('#good-btn');
+    assert.equal(await t('#target-value'), '0:10');
+    assert.equal(await t('#target-basis'), 'Limited basis — repeat 0:10.');
+    assert.ok(await p.isVisible('#earlier-level'));
+    assert.equal(await p.locator('#history li').count(), 4); // old history kept
+    // Worry right away after that: no positive time from the old level.
+    await p.clock.runFor(3_600_000);
+    await p.tap('#start-btn');
+    await p.clock.runFor(20_000);
+    await p.tap('#end-btn');
+    await p.tap('#bad-btn');
+    await p.fill('#onset-sec', '0');
+    await p.tap('#onset-save');
+    assert.equal(await t('#target-value'), 'No target');
+    assert.equal(await t('#target-basis'), 'Worry from the start. Choose an easier step before the next absence.');
     await c.close();
   });
 

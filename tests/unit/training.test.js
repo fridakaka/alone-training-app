@@ -188,8 +188,11 @@ test('edit and delete recalculate the suggestion', () => {
   const withOnset = setAnxietyOnset(s, s.sessions[1].id, 30);
   assert.equal(home(withOnset).sec, 24);
   const asGood = updateSession(s, s.sessions[1].id, { result: 'good' });
-  assert.equal(home(asGood).kind, KINDS.REPEAT); // one day only → no raise
-  assert.equal(home(deleteSession(s, s.sessions[1].id)).kind, KINDS.TOO_LITTLE);
+  assert.equal(home(asGood).kind, KINDS.LIMITED); // one day only → no raise
+  assert.equal(home(asGood).sec, 60); // 2 min and 1 min: 1 min is supported by both
+  const deleted = deleteSession(s, s.sessions[1].id);
+  assert.equal(home(deleted).kind, KINDS.LIMITED); // only the 2 min session is left
+  assert.equal(home(deleted).sec, 120);
   // Computing a suggestion never rewrites the stored sessions.
   const before = JSON.stringify(s);
   home(s);

@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.4)
+# Alone Time – dog alone-training tracker (v0.5)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -10,21 +10,22 @@ suggested next duration.
 
 <p>
 <img src="docs/screenshots/9-shorter.png" width="220" alt="Time suggestion after a hard session">
-<img src="docs/screenshots/10-edit.png" width="220" alt="Edit a session">
+<img src="docs/screenshots/14-after-break.png" width="220" alt="After a break: no automatic time">
 <img src="docs/screenshots/12-worry-question.png" width="220" alt="When did worry start?">
 </p>
 
 ## Time suggestion
 
-Per place, from the recent logged history in that place only (last 7 days, max 5 sessions).
-It suggests a small increase only after a time has gone well several times on different
-days, keeps the time otherwise, suggests a shorter time after a hard session (below the
-point where worry started, if you enter it), and suggests a careful return after a break.
-When there is too little recent history, you choose an easy starting time.
-You can always change the time or train without a target.
+Suggestions are based on recent sessions in this place (last 7 days, max 5 sessions).
+Earlier long sessions stay in the history and are shown as "earlier stable level", but don't
+automatically decide today's time. A small increase (about +10 %) only after a time has gone
+well on different days; with a limited basis the app suggests repeating a time that more than
+one session supports; after a hard session it suggests less (below the worry time, if given);
+after a break it shows no automatic time. You can always type a time (from 1 second), use − / +,
+or train without a target.
 
 Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
-The app is a training journal: it can't tell how long a dog can safely be alone.
+The app is a training journal – not advice, and it can't tell how long a dog can be alone.
 
 ## Editing and backup
 

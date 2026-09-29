@@ -341,3 +341,20 @@ button.row:focus-visible { outline: 3px solid var(--good); outline-offset: -3px;
 .help ul { padding-left: 20px; margin: 8px 0; }
 .help li { margin: 6px 0; }
 .help .muted { font-size: 14px; color: var(--ink-3); }
+
+/* ---------- v0.5: typed target time, earlier level ---------- */
+button.target-value {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 12px;
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+  padding: 0 6px;
+}
+button.target-value:focus-visible { outline: 3px solid var(--good); outline-offset: 2px; }
+.target-edit { margin: 8px 0 4px; }
+.target-edit .chips { margin-top: 6px; }
+.chip-strong { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
+.target-history { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); }

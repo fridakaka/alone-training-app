@@ -1,10 +1,11 @@
 // Time values: rounding, manual −/+ steps and formatting. Pure functions.
 // The time suggestion itself lives in suggestion.js.
 
-export const MIN_TARGET_SEC = 5;
+export const MIN_TARGET_SEC = 1; // manual targets from 1 second
 
 // Step for the manual − / + buttons (seconds). Coarse enough to be quick to tap.
 export function stepFor(sec) {
+  if (sec < 10) return 1;
   if (sec < 60) return 5;
   if (sec < 5 * 60) return 15;
   if (sec < 15 * 60) return 30;
@@ -38,7 +39,7 @@ export function floorNatural(sec) {
 
 // Manual − / + adjustments. Snaps to the natural grid of the new size.
 export function stepUp(sec) {
-  if (!sec) return 60; // from "no target", start at 1 minute
+  if (!sec) return null; // from "no target" the app asks for a time instead of guessing one
   const next = sec + stepFor(sec);
   const step = stepFor(next);
   const down = Math.floor(next / step) * step; // e.g. 4:55 + 15 s -> 5:00, not 5:30

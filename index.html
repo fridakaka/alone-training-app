@@ -29,13 +29,25 @@
       </div>
 
       <div class="target" aria-live="polite">
-        <p id="target-label" class="target-label">Time suggestion</p>
+        <p id="target-label" class="target-label">Suggestion today</p>
         <div class="stepper">
           <button id="target-down" class="step-btn" type="button" aria-label="Shorter target">−</button>
-          <output id="target-value" class="target-value" for="target-down target-up">No target</output>
+          <button id="target-value" class="target-value" type="button" aria-describedby="target-label">No target</button>
           <button id="target-up" class="step-btn" type="button" aria-label="Longer target">+</button>
         </div>
+        <div id="target-edit" class="target-edit" role="group" aria-label="Type a target time" hidden>
+          <div class="time-inputs center">
+            <label><input id="target-min" type="number" inputmode="numeric" min="0" max="999" aria-label="Target minutes"> min</label>
+            <label><input id="target-sec" type="number" inputmode="numeric" min="0" max="59" aria-label="Target seconds"> s</label>
+          </div>
+          <p id="target-error" class="form-error" role="alert"></p>
+          <div class="chips">
+            <button id="target-set" class="chip chip-strong" type="button">Set time</button>
+            <button id="target-edit-cancel" class="chip" type="button">Cancel</button>
+          </div>
+        </div>
         <p id="target-basis" class="target-basis"></p>
+        <p id="earlier-level" class="target-history" hidden></p>
         <div id="target-chips" class="chips"></div>
       </div>
 
@@ -117,25 +129,28 @@
       <h2 id="help-title">Help</h2>
       <details class="help">
         <summary>How is the time suggestion calculated?</summary>
-        <p>The app looks only at sessions logged in the chosen place (Home, Car or Outside shop),
-          and only at the 5 most recent ones from the last 7 days. Newer sessions count more, and
-          several sessions on the same day count together as one day.</p>
+        <p>Suggestions are based on recent sessions in this place. Earlier long sessions stay in
+          your history, but don't automatically decide today's time. Every dog and every day is
+          different. Adjust the time to how your dog actually reacts.</p>
         <ul>
-          <li><strong>Small increase</strong> (about +10 %) only when a time has gone well
-            several times, on at least two different days.</li>
-          <li><strong>Same time</strong> while a time isn't yet stable. One unusually long good
-            session helps a little, but does not become the new level.</li>
-          <li><strong>Shorter</strong> after a session that didn't go well: below the point where
-            worry started, if you entered it. This holds until two good sessions have followed.</li>
-          <li><strong>After a break</strong> (nothing logged in 7 days) the app suggests a careful
-            restart at half the earlier level, or lets you choose an easy start. Your history is kept.</li>
-          <li>When there is too little recent history, choose an easy starting time yourself.</li>
+          <li>Only the 5 most recent sessions from the last 7 days in the chosen place count.
+            Several sessions on one day count together as one day.</li>
+          <li><strong>Small increase</strong> (about +10 %) when a time has gone well at least
+            twice, on different days, and the latest session confirmed it.</li>
+          <li><strong>Limited basis</strong>: with few recent sessions the app suggests repeating a
+            time that more than one session supports. One long session never decides on its own.</li>
+          <li>If longer times go well again on different days, that longer time can be confirmed
+            directly – no need to go through many small steps.</li>
+          <li><strong>Shorter</strong> after a session that didn't go well: below the time when
+            worry started, if you entered it.</li>
+          <li><strong>After a break</strong> (nothing logged in 7 days) there is no automatic time.
+            Choose a short time that feels easy. The earlier stable level is shown as history only.</li>
         </ul>
         <p>You can always change the time, or train without a target. The timer never stops by
           itself, and reaching the target never counts as "went well" automatically.</p>
         <p class="muted">The app only knows the sessions you log. It is a training journal: it
           can't tell how long your dog can safely be alone and does not replace an individual
-          training plan. The rules are preliminary.</p>
+          training plan. The rules are preliminary and adjustable.</p>
       </details>
     </section>
   </main>

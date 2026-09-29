@@ -1,5 +1,7 @@
 # Version 0.2 – implementation plan
 
+> **Note (v0.5):** superseded by [SUGGESTION-MODEL.md](SUGGESTION-MODEL.md) (v0.5). The return-at-50 % rule and the median fallback described in older versions were removed.
+
 > **Note (v0.4):** the suggestion rules in this file are replaced by [SUGGESTION-MODEL.md](SUGGESTION-MODEL.md). Kept for history.
 
 Incremental on top of v0.1. Same files, same look, same one-screen flow.

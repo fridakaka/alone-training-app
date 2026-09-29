@@ -53,10 +53,64 @@ $('start-btn').addEventListener('click', () => {
 
 $('context-picker').addEventListener('click', (e) => {
   const btn = e.target.closest('[data-context]');
-  if (btn) update(selectContext(state, btn.dataset.context));
+  if (!btn) return;
+  targetEditorOpen = false;
+  update(selectContext(state, btn.dataset.context));
 });
 
-$('target-up').addEventListener('click', () => setDraft(stepUp(currentTarget().value)));
+$('target-up').addEventListener('click', () => {
+  const v = currentTarget().value;
+  // From "no target" the app doesn't guess a time: it asks for one.
+  if (v == null) openTargetEditor();
+  else setDraft(stepUp(v));
+});
+$('target-value').addEventListener('click', () => openTargetEditor());
+
+// ---------- typing a target time directly ----------
+
+let targetEditorOpen = false;
+
+function openTargetEditor() {
+  const v = currentTarget().value;
+  $('target-min').value = v ? Math.floor(v / 60) : '';
+  $('target-sec').value = v ? v % 60 : '';
+  $('target-error').textContent = '';
+  targetEditorOpen = true;
+  render();
+  $(v && v >= 60 ? 'target-min' : 'target-sec').focus();
+}
+
+function closeTargetEditor() {
+  targetEditorOpen = false;
+  render();
+  $('target-value').focus();
+}
+
+function applyTargetEditor() {
+  const input = readMinSec('target-min', 'target-sec');
+  if (input.error) return void ($('target-error').textContent = input.error);
+  if (input.empty || input.value < MIN_TARGET_SEC) {
+    $('target-error').textContent = 'Enter at least 1 second, or choose No target.';
+    return;
+  }
+  draftTargets[contextId()] = input.value;
+  closeTargetEditor();
+}
+
+$('target-set').addEventListener('click', applyTargetEditor);
+$('target-edit-cancel').addEventListener('click', closeTargetEditor);
+$('target-edit').addEventListener('keydown', (e) => {
+  // preventDefault: otherwise the same Enter "clicks" the time button that gets focus next.
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    applyTargetEditor();
+  }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeTargetEditor();
+  }
+});
+$('target-edit').addEventListener('input', () => ($('target-error').textContent = ''));
 $('target-down').addEventListener('click', () => setDraft(stepDown(currentTarget().value)));
 $('target-chips').addEventListener('click', (e) => {
   const chip = e.target.closest('[data-target]');
@@ -66,6 +120,7 @@ $('target-chips').addEventListener('click', (e) => {
 });
 
 function setDraft(value) {
+  targetEditorOpen = false;
   if (value === undefined) delete draftTargets[contextId()];
   else draftTargets[contextId()] = value;
   render();
@@ -81,16 +136,17 @@ function currentTarget() {
 }
 
 // One main, plain-language explanation per kind of suggestion.
+// Never "the dog can …" – the journal can't establish that.
 const EXPLANATION = {
-  [KINDS.RAISE]: 'Several calm sessions at a similar time.',
+  [KINDS.RAISE]: 'Several calm sessions on different days — small increase.',
   [KINDS.REPEAT]: 'Keep this time until it feels stable.',
-  [KINDS.EASIER]: 'Shorter after the last session.',
-  [KINDS.HARD_CHOOSE]: 'The last session was hard — choose an easy starting time.',
-  [KINDS.WORRIED_AT_ONCE]: 'Worry started right away last time — choose a very easy start.',
-  [KINDS.RETURN]: 'Careful return after a break — confirm with easier sessions.',
-  [KINDS.RETURN_CHOOSE]: 'Break since the last logged session — choose an easy starting time.',
-  [KINDS.TOO_LITTLE]: 'Too little recent history — choose an easy starting time.',
-  [KINDS.NONE]: 'No sessions logged here yet — choose an easy starting time.',
+  [KINDS.LIMITED]: (sec) => `Limited basis — repeat ${formatTarget(sec)}.`,
+  [KINDS.EASIER]: 'The last session was hard — shorter suggestion.',
+  [KINDS.HARD_CHOOSE]: 'The last session was hard — choose a short, easy time.',
+  [KINDS.WORRIED_AT_ONCE]: 'Worry from the start. Choose an easier step before the next absence.',
+  [KINDS.BREAK]: "It's been a while. Choose a short time that feels easy today.",
+  [KINDS.TOO_LITTLE]: 'Too little usable recent history — choose a short, easy time.',
+  [KINDS.NONE]: 'No sessions logged here yet — choose a short, easy time.',
 };
 
 $('end-btn').addEventListener('click', () => {
@@ -219,18 +275,32 @@ function renderReady() {
   const isSuggested = suggested != null && value === suggested;
 
   $('target-label').textContent = isSuggested
-    ? 'Time suggestion'
+    ? 'Suggestion today'
     : value == null
       ? suggested == null
         ? 'Choose a starting time'
         : 'No target'
       : 'Your target';
   $('target-value').textContent = value == null ? 'No target' : formatTarget(value);
+  $('target-value').setAttribute(
+    'aria-label',
+    `${value == null ? 'No target' : `Target ${formatTarget(value)}`}. Tap to type a time.`,
+  );
   $('target-value').classList.toggle('none', value == null);
   $('target-down').disabled = value == null || value <= MIN_TARGET_SEC;
+  $('target-edit').hidden = !targetEditorOpen;
 
-  $('target-basis').textContent = EXPLANATION[suggestion.kind] ?? '';
+  const explain = EXPLANATION[suggestion.kind];
+  $('target-basis').textContent = typeof explain === 'function' ? explain(suggestion.sec) : explain ?? '';
   $('target-basis').dataset.kind = suggestion.kind;
+
+  // Earlier stable level: history only, shown when it is above today's suggestion.
+  const earlier = suggestion.earlierLevel;
+  const showEarlier = earlier != null && (suggested == null || earlier > suggested);
+  $('earlier-level').hidden = !showEarlier;
+  $('earlier-level').textContent = showEarlier
+    ? `Earlier stable level: ${formatTarget(earlier)} (history, not today's target)`
+    : '';
 
   const chips = [];
   if (suggested != null && value !== suggested) {

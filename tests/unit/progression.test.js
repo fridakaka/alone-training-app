@@ -5,6 +5,9 @@ import {
 } from '../../src/progression.js';
 
 test('button step grows with duration', () => {
+  assert.equal(stepFor(1), 1);
+  assert.equal(stepFor(9), 1);
+  assert.equal(stepFor(10), 5);
   assert.equal(stepFor(30), 5);
   assert.equal(stepFor(59), 5);
   assert.equal(stepFor(60), 15);
@@ -34,7 +37,8 @@ test('natural rounding avoids awkward values like 4:23 or 17:47', () => {
   assert.equal(roundNatural(33), 35);
   assert.equal(roundNatural(7 * 60 + 44), 7 * 60 + 30);
   assert.equal(roundNatural(62 * 60), 60 * 60);
-  assert.equal(roundNatural(1), MIN_TARGET_SEC);
+  assert.equal(roundNatural(1), 1);
+  assert.equal(MIN_TARGET_SEC, 1);
 });
 
 test('floorNatural never rounds up', () => {
@@ -47,19 +51,23 @@ test('floorNatural never rounds up', () => {
 });
 
 test('manual − / + steps land on natural values', () => {
-  assert.equal(stepUp(null), 60);
+  assert.equal(stepUp(null), null); // from "no target" the app asks for a time
+  assert.equal(stepUp(1), 2);
+  assert.equal(stepUp(9), 10);
   assert.equal(stepUp(270), 285);
   assert.equal(stepUp(295), 300); // crosses into 30 s steps
   assert.equal(stepUp(300), 330);
   assert.equal(stepUp(55), 60);
   assert.equal(stepDown(300), 285); // just below 5 min uses 15 s steps
   assert.equal(stepDown(60), 55);
-  assert.equal(stepDown(5), MIN_TARGET_SEC);
+  assert.equal(stepDown(5), 4);
+  assert.equal(stepDown(10), 9);
+  assert.equal(stepDown(1), 1);
   assert.equal(stepDown(null), null);
 });
 
 test('+ always goes up and − always goes down, for every target up to 4 h', () => {
-  for (let v = 5; v < 4 * 3600; v += 5) {
+  for (let v = 1; v < 4 * 3600; v += 1) {
     assert.ok(stepUp(v) > v, `up ${v}`);
     assert.ok(stepDown(v) < v || v === MIN_TARGET_SEC, `down ${v}`);
   }
