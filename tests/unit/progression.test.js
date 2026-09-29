@@ -90,3 +90,33 @@ test('+ always goes up and − always goes down, for every target up to 4 h', ()
     assert.ok(stepDown(v) < v || v === MIN_TARGET_SEC, `down ${v}`);
   }
 });
+
+// ---------- v0.3 rules ----------
+import { suggestDetailed, plusTenLast, EARLY_END_RATIO } from '../../src/progression.js';
+
+test('after a setback, the first good session is repeated, the second grows +10%', () => {
+  const setback = [s(300, 'good'), s(300, 'bad'), s(270, 'good')];
+  assert.deepEqual(suggestDetailed(setback), { sec: 270, reason: 'consolidate' });
+  assert.deepEqual(suggestDetailed([...setback, s(270, 'good')]), { sec: 300, reason: 'up' });
+});
+
+test('+10% chip is still offered when the suggestion is "same again"', () => {
+  assert.equal(plusTenLast([s(300, 'bad'), s(270, 'good')]), 300);
+  assert.equal(plusTenLast([s(270, 'bad')]), null);
+});
+
+test('good session ended well before its target suggests the same target again', () => {
+  const early = { durationSec: 60, result: 'good', targetSec: 300, startedAt: 0 };
+  assert.deepEqual(suggestDetailed([early]), { sec: 300, reason: 'early' });
+  // Close to the target (>= 90 %) counts as reaching it.
+  const close = { durationSec: 290, result: 'good', targetSec: 300, startedAt: 0 };
+  assert.equal(EARLY_END_RATIO, 0.9);
+  assert.deepEqual(suggestDetailed([close]), { sec: 330, reason: 'up' }); // 319 s -> 5:30
+  // Didn't go well always means −10 % of what actually happened.
+  const earlyBad = { durationSec: 60, result: 'bad', targetSec: 300, startedAt: 0 };
+  assert.deepEqual(suggestDetailed([earlyBad]), { sec: 55, reason: 'down' });
+});
+
+test('two bad sessions in a row keep going down', () => {
+  assert.deepEqual(suggestDetailed([s(300, 'bad'), s(270, 'bad')]), { sec: 240, reason: 'down' });
+});

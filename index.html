@@ -72,14 +72,73 @@
       </div>
       <div id="chart"></div>
       <p id="chart-detail" class="detail" aria-live="polite"></p>
+      <p id="chart-note" class="chart-note" hidden></p>
       <p id="empty" class="empty">Your <span id="empty-context">Home</span> sessions will appear here after your first training.</p>
     </section>
 
     <section id="history-section" class="card" aria-labelledby="history-title" hidden>
       <h2 id="history-title">Previous sessions <span class="dot">·</span> <span id="history-context" class="muted">Home</span></h2>
+      <p class="hint">Tap a session to edit or delete it.</p>
       <ol id="history" class="history"></ol>
+      <button id="history-more" class="btn-link" type="button" hidden></button>
+    </section>
+
+    <section id="data-section" class="card" aria-labelledby="data-title">
+      <h2 id="data-title">Your data</h2>
+      <p class="hint">Stored only on this phone. Save a backup now and then.
+        <span id="last-backup"></span></p>
+      <div class="data-actions">
+        <button id="backup-btn" class="btn btn-quiet" type="button">Save backup</button>
+        <button id="csv-btn" class="btn btn-quiet" type="button">Export for Excel</button>
+        <label class="btn btn-quiet file-btn">Restore from backup
+          <input id="restore-input" type="file" accept=".json,application/json">
+        </label>
+      </div>
+      <p id="data-status" class="data-status" role="status"></p>
     </section>
   </main>
+
+  <dialog id="edit-dialog" class="sheet" aria-labelledby="edit-title">
+    <form id="edit-form" method="dialog">
+      <h2 id="edit-title">Edit session</h2>
+      <p id="edit-when" class="hint"></p>
+
+      <fieldset>
+        <legend>Place</legend>
+        <div id="edit-context" class="segmented"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Result</legend>
+        <div class="choices">
+          <button type="button" class="btn btn-good toggle" data-result="good">Went well</button>
+          <button type="button" class="btn btn-bad toggle" data-result="bad">Didn't go well</button>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Actual duration</legend>
+        <div class="time-inputs">
+          <label><input id="edit-dur-min" type="number" inputmode="numeric" min="0" max="999"> min</label>
+          <label><input id="edit-dur-sec" type="number" inputmode="numeric" min="0" max="59"> s</label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Target <span class="muted">(leave empty for none)</span></legend>
+        <div class="time-inputs">
+          <label><input id="edit-tgt-min" type="number" inputmode="numeric" min="0" max="999"> min</label>
+          <label><input id="edit-tgt-sec" type="number" inputmode="numeric" min="0" max="59"> s</label>
+        </div>
+      </fieldset>
+
+      <div class="sheet-actions">
+        <button id="edit-cancel" type="button" class="btn btn-quiet">Cancel</button>
+        <button id="edit-save" type="submit" class="btn btn-primary">Save</button>
+      </div>
+      <button id="edit-delete" type="button" class="btn-link danger">Delete session</button>
+    </form>
+  </dialog>
 
   <script type="module" src="src/app.js"></script>
 </body>

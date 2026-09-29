@@ -38,7 +38,8 @@ test('v0.1 sessions are migrated to Home with all fields intact', () => {
   assert.deepEqual(s.contexts.map((c) => c.id), ['home', 'car', 'outside-shop']);
   assert.equal(s.selectedContextId, 'home');
   // Old data immediately drives the Home suggestion, other contexts start empty.
-  assert.equal(suggestNext(sessionsFor(s, { dogId: 'charlie', contextId: 'home' })), 270);
+  // Last: 4:00 went well right after one that didn't -> same again (v0.3 rule).
+  assert.equal(suggestNext(sessionsFor(s, { dogId: 'charlie', contextId: 'home' })), 240);
   assert.equal(suggestNext(sessionsFor(s, { dogId: 'charlie', contextId: 'car' })), null);
 });
 

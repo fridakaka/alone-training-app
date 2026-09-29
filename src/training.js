@@ -1,5 +1,5 @@
-// Pure training logic: no DOM, no storage. Easy to test and to extend
-// (e.g. a future suggestNextDuration(sessions) belongs here).
+// Pure training logic: no DOM, no storage. Easy to test and to extend.
+// Suggested durations live in progression.js.
 
 export const RESULTS = Object.freeze({ GOOD: 'good', BAD: 'bad' });
 
@@ -19,6 +19,7 @@ export function createInitialState() {
     selectedContextId: 'home', // last chosen context, remembered between visits
     active: null, // session currently running
     pending: null, // session ended but not yet rated
+    lastBackupAt: null, // when a backup file was last saved
     sessions: [],
   };
 }
@@ -71,6 +72,30 @@ export function recordResult(state, result) {
 
 export function discardPending(state) {
   return { ...state, pending: null };
+}
+
+// Edit a saved session. Only these fields can change; invalid values are ignored.
+export function updateSession(state, id, changes) {
+  const patch = {};
+  if (Object.values(RESULTS).includes(changes.result)) patch.result = changes.result;
+  if (Number.isFinite(changes.durationSec) && changes.durationSec >= 0) {
+    patch.durationSec = Math.round(changes.durationSec);
+  }
+  if ('targetSec' in changes) patch.targetSec = normalizeTarget(changes.targetSec);
+  if (state.contexts.some((c) => c.id === changes.contextId)) patch.contextId = changes.contextId;
+  return {
+    ...state,
+    sessions: state.sessions.map((s) => {
+      if (s.id !== id) return s;
+      const next = { ...s, ...patch };
+      if ('durationSec' in patch) next.endedAt = next.startedAt + next.durationSec * 1000;
+      return next;
+    }),
+  };
+}
+
+export function deleteSession(state, id) {
+  return { ...state, sessions: state.sessions.filter((s) => s.id !== id) };
 }
 
 export function sessionsFor(state, { dogId, contextId }) {

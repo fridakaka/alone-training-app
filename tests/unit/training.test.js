@@ -146,3 +146,47 @@ test('invalid targets are treated as no target', () => {
     assert.equal(s.active.targetSec, null);
   }
 });
+
+// ---------- v0.3: edit / delete ----------
+import { updateSession, deleteSession } from '../../src/training.js';
+
+function twoSessions() {
+  let s = runSession(createInitialState(), 'home', 120, 'good', { targetSec: 120, start: 1000 });
+  return runSession(s, 'home', 60, 'bad', { start: 5_000_000 });
+}
+
+test('edit a session: result, duration, target and place', () => {
+  const s = twoSessions();
+  const id = s.sessions[0].id;
+  const e = updateSession(s, id, { result: 'bad', durationSec: 150, targetSec: null, contextId: 'car' });
+  const edited = e.sessions.find((x) => x.id === id);
+  assert.equal(edited.result, 'bad');
+  assert.equal(edited.durationSec, 150);
+  assert.equal(edited.endedAt, edited.startedAt + 150_000);
+  assert.equal(edited.targetSec, null);
+  assert.equal(edited.contextId, 'car');
+  assert.deepEqual(e.sessions[1], s.sessions[1]); // other session untouched
+});
+
+test('edit ignores invalid values and unknown fields', () => {
+  const s = twoSessions();
+  const id = s.sessions[0].id;
+  const e = updateSession(s, id, { result: 'meh', durationSec: -5, contextId: 'moon', startedAt: 0, id: 'x' });
+  assert.deepEqual(e.sessions[0], s.sessions[0]);
+});
+
+test('edit changes the suggestion', () => {
+  const s = twoSessions();
+  const home = (st) => suggestNext(sessionsFor(st, { dogId: 'charlie', contextId: 'home' }));
+  assert.equal(home(s), 55);
+  const e = updateSession(s, s.sessions[1].id, { result: 'good' });
+  assert.equal(home(e), 75); // 60 s good, previous good -> +10% -> 66 -> 1:15 grid
+});
+
+test('delete removes only that session', () => {
+  const s = twoSessions();
+  const d = deleteSession(s, s.sessions[0].id);
+  assert.equal(d.sessions.length, 1);
+  assert.equal(d.sessions[0].id, s.sessions[1].id);
+  assert.equal(deleteSession(s, 'nope').sessions.length, 2);
+});

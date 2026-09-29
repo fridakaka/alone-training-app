@@ -1,7 +1,7 @@
 // End-to-end test: opens the real app on an iPhone-sized screen and taps through it.
 // Screenshots go to test-results/.
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { serve } from '../../scripts/serve.mjs';
 import { launch } from '../../scripts/browser.mjs';
 
@@ -220,7 +220,131 @@ try {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
     assert.equal(overflow, false);
   });
+
+  // ---------- v0.3 ----------
+  await step('after a setback, first good session → "same again", +10% still one tap away', async () => {
+    await pick('Home'); // last Home: 40 s didn't go well → 0:35
+    assert.equal(await text('#target-value'), '0:35');
+    await session(35, 'good');
+    assert.equal(await text('#target-label'), 'Suggested today');
+    assert.equal(await text('#target-value'), '0:35');
+    assert.match(await text('#target-basis'), /first good after a setback, same again/);
+    assert.match(await text('#target-chips'), /\+10% 0:40/);
+    await page.screenshot({ path: OUT + '9-same-again.png', fullPage: true });
+    await session(35, 'good');
+    assert.equal(await text('#target-value'), '0:40');
+    assert.match(await text('#target-basis'), /· \+10%$/);
+  });
+
+  await step('good session ended well before target → same target again', async () => {
+    await page.tap('#target-up'); // 0:40 → 0:45
+    assert.equal(await text('#target-value'), '0:45');
+    await session(10, 'good');
+    assert.equal(await text('#target-value'), '0:45');
+    assert.match(await text('#target-basis'), /ended before target, same target/);
+  });
+
+  await step('tap a session to edit: result and duration change, suggestion follows', async () => {
+    const before = await historyCount();
+    await page.locator('#history .row').first().tap();
+    assert.ok(await page.isVisible('#edit-dialog'));
+    assert.equal(await page.inputValue('#edit-dur-sec'), '10');
+    assert.equal(await page.inputValue('#edit-tgt-sec'), '45');
+    await page.screenshot({ path: OUT + '10-edit.png' });
+    await page.tap('#edit-dialog [data-result="bad"]');
+    await page.fill('#edit-dur-min', '1');
+    await page.fill('#edit-dur-sec', '0');
+    await page.tap('#edit-save');
+    assert.ok(await page.isHidden('#edit-dialog'));
+    assert.equal(await historyCount(), before);
+    assert.equal(await text('#history li:first-child .dur'), '1 min 00 s');
+    assert.match(await text('#history li:first-child .tag'), /Didn't go well/);
+    assert.equal(await text('#target-value'), '0:55'); // 60 s didn't go well → −10%
+  });
+
+  await step('cancel leaves a session unchanged', async () => {
+    await page.locator('#history .row').first().tap();
+    await page.fill('#edit-dur-min', '9');
+    await page.tap('#edit-cancel');
+    assert.equal(await text('#history li:first-child .dur'), '1 min 00 s');
+  });
+
+  await step('editing the place moves a session to another context', async () => {
+    const home = await historyCount();
+    await page.locator('#history .row').first().tap();
+    await page.locator('#edit-context .seg', { hasText: 'Outside shop' }).tap();
+    await page.tap('#edit-save');
+    assert.equal(await historyCount(), home - 1);
+    await pick('Outside shop');
+    assert.equal(await historyCount(), 2);
+    await pick('Home');
+  });
+
+  await step('delete needs two taps and removes only that session', async () => {
+    const home = await historyCount();
+    await page.locator('#history .row').first().tap();
+    await page.tap('#edit-delete');
+    assert.equal(await text('#edit-delete'), 'Tap again to delete');
+    assert.ok(await page.isVisible('#edit-dialog'));
+    await page.tap('#edit-delete');
+    assert.equal(await historyCount(), home - 1);
+    await page.reload();
+    assert.equal(await historyCount(), home - 1);
+  });
+
+  await step('history cannot be edited during a running session', async () => {
+    await page.tap('#start-btn');
+    assert.equal(await page.locator('#history .row:disabled').count(), await historyCount());
+    await page.tap('#end-btn');
+    await page.tap('#discard-btn');
+  });
+
+  let backupPath;
+  await step('Save backup downloads a file with every session and records the date', async () => {
+    assert.match(await text('#last-backup'), /No backup saved yet/);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.tap('#backup-btn')]);
+    assert.match(dl.suggestedFilename(), /^alone-time-\d{4}-\d\d-\d\d\.json$/);
+    backupPath = OUT + 'backup.json';
+    await dl.saveAs(backupPath);
+    const data = JSON.parse(await readFile(backupPath, 'utf8'));
+    const total = await page.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length);
+    assert.equal(data.sessions.length, total);
+    assert.match(await text('#last-backup'), /Last backup:/);
+    assert.match(await text('#data-status'), new RegExp(`Backup saved \\(${total} sessions\\)`));
+  });
+
+  await step('Export for Excel downloads a CSV with a header and one row per session', async () => {
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.tap('#csv-btn')]);
+    const csv = await readFile(await dl.path(), 'utf8');
+    const lines = csv.trim().split('\r\n');
+    assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result');
+    const total = await page.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length);
+    assert.equal(lines.length - 2, total);
+    await page.locator('#data-section').screenshot({ path: OUT + '11-data.png' });
+  });
   await ctx.close();
+
+  await step('Restore from backup on an empty phone brings everything back; restoring twice adds nothing', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    watch(p);
+    await p.goto(APP);
+    assert.equal(await p.locator('#history li').count(), 0);
+    const restoreStatus = async (file) => {
+      await p.setInputFiles('#restore-input', file);
+      await p.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
+      return p.textContent('#data-status');
+    };
+    assert.match(await restoreStatus(backupPath), /Restored \d+ sessions/);
+    const total = JSON.parse(await readFile(backupPath, 'utf8')).sessions.length;
+    assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length), total);
+    assert.ok((await p.locator('#history li').count()) > 0);
+    assert.match(await restoreStatus(backupPath), /Nothing new/);
+    assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length), total);
+    const junk = { name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('nope') };
+    assert.match(await restoreStatus(junk), /isn't a backup/);
+    await c.close();
+  });
 
   await step('v0.1 data on the phone is migrated to Home and the original is kept', async () => {
     const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
@@ -276,10 +400,44 @@ try {
       });
       await p.goto(APP);
       assert.equal(await p.locator('.chart .bar').count(), 16);
+      assert.equal(await p.locator('#history li').count(), 10);
+      assert.equal((await p.textContent('#history-more')).trim(), 'Show all (16)');
+      assert.ok(await p.isHidden('#chart-note'));
       await p.screenshot({ path: OUT + `4-history-${scheme}.png`, fullPage: true });
       await c.close();
     });
   }
+
+  await step('Show all expands the history; graph caption appears past 30 sessions', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    watch(p);
+    await p.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      const base = new Date('2026-08-01T10:00:00').getTime();
+      const sessions = Array.from({ length: 35 }, (_, i) => ({
+        id: 'm' + i, dogId: 'charlie', contextId: 'home', startedAt: base + i * 86_400_000,
+        endedAt: base + i * 86_400_000 + 60_000, durationSec: 60 + i * 10, targetSec: null,
+        result: i % 5 === 3 ? 'bad' : 'good',
+      }));
+      localStorage.setItem('alone-training:v2', JSON.stringify({
+        schemaVersion: 2, dogs: [{ id: 'charlie', name: 'Charlie' }],
+        contexts: [{ id: 'home', name: 'Home' }, { id: 'car', name: 'Car' }, { id: 'outside-shop', name: 'Outside shop' }],
+        selectedContextId: 'home', active: null, pending: null, sessions,
+      }));
+    });
+    await p.goto(APP);
+    assert.equal(await p.locator('.chart .bar').count(), 30);
+    assert.equal((await p.textContent('#chart-note')).trim(), 'Showing the latest 30 of 35 sessions.');
+    assert.equal(await p.locator('#history li').count(), 10);
+    await p.tap('#history-more');
+    assert.equal(await p.locator('#history li').count(), 35);
+    assert.equal((await p.textContent('#history-more')).trim(), 'Show fewer');
+    await p.tap('#history-more');
+    assert.equal(await p.locator('#history li').count(), 10);
+    await c.close();
+  });
 
   await step('no errors in the browser console', async () => {
     assert.deepEqual(errors, []);

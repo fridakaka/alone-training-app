@@ -169,7 +169,7 @@ body[data-mode="training"] .card { opacity: 0.45; }
   padding: 12px 0;
   border-top: 1px solid var(--line);
 }
-.row:first-child { border-top: 0; }
+.history li:first-child .row { border-top: 0; }
 .when { grid-area: when; color: var(--ink-2); font-size: 14px; }
 .dur { grid-area: dur; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tag { grid-area: tag; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--ink); }
@@ -247,3 +247,82 @@ body[data-mode="training"] .card { opacity: 0.45; }
 .planned { grid-area: planned; justify-self: end; font-size: 13px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .chart .target { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
 .swatch-target { display: inline-block; width: 12px; height: 0; border-top: 2px solid var(--ink); border-radius: 1px; }
+
+/* ---------- v0.3: editable history ---------- */
+.hint { margin: 0 0 4px; font-size: 13px; color: var(--ink-3); }
+body:not([data-mode="ready"]) #history-section .hint { display: none; }
+button.row {
+  appearance: none;
+  width: 100%;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0;
+}
+button.row:disabled { cursor: default; color: inherit; opacity: 1; }
+.history li:first-child .row { border-top: 0; }
+button.row:not(:disabled):active { background: var(--bg); }
+button.row:focus-visible { outline: 3px solid var(--good); outline-offset: -3px; border-radius: 8px; }
+#history-more { display: block; margin: 4px auto 0; }
+.chart-note { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); text-align: center; }
+
+/* ---------- v0.3: your data ---------- */
+.data-actions { display: grid; gap: 8px; margin-top: 10px; }
+.btn-quiet {
+  background: transparent;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
+  min-height: 52px;
+  font-size: 16px;
+  font-weight: 500;
+}
+.file-btn { display: flex; align-items: center; justify-content: center; position: relative; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; font-size: 0; }
+.file-btn:focus-within { outline: 3px solid var(--good); outline-offset: 3px; }
+.data-status { margin: 8px 0 0; min-height: 1.45em; font-size: 14px; color: var(--ink-2); text-align: center; }
+
+/* ---------- v0.3: edit sheet ---------- */
+.sheet {
+  width: min(480px, 100%);
+  max-width: 100%;
+  max-height: 92vh;
+  margin: auto auto 0;
+  padding: 20px 16px calc(env(safe-area-inset-bottom) + 16px);
+  border: 0;
+  border-radius: 24px 24px 0 0;
+  background: var(--surface);
+  color: var(--ink);
+  overflow-y: auto;
+}
+.sheet::backdrop { background: rgb(0 0 0 / 0.35); }
+.sheet form { display: flex; flex-direction: column; gap: 14px; }
+.sheet h2 { font-size: 20px; }
+.sheet .hint { margin-top: -10px; }
+.sheet fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.sheet legend { padding: 0; margin-bottom: 6px; font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.sheet legend .muted { font-weight: 400; color: var(--ink-3); }
+.sheet .choices .btn { min-height: 52px; font-size: 16px; }
+.toggle[aria-pressed="false"] { background: transparent; box-shadow: inset 0 0 0 1px var(--line); color: var(--ink-2); }
+.time-inputs { display: flex; gap: 12px; }
+.time-inputs label { display: flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.time-inputs input {
+  width: 5.5ch;
+  min-height: 48px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 18px; /* 16px+ prevents iPhone zoom on focus */
+  font-variant-numeric: tabular-nums;
+}
+.time-inputs input:focus-visible { outline: 3px solid var(--good); outline-offset: 1px; }
+.sheet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+.sheet-actions .btn { min-height: 56px; }
+.btn-link.danger { color: var(--bad); }
+.btn-link.danger.armed { font-weight: 700; }
