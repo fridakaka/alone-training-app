@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.2)
+# Alone Time – dog alone-training tracker (v0.3)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -10,17 +10,30 @@ suggested next duration.
 
 <p>
 <img src="docs/screenshots/6-car-suggestion.png" width="220" alt="Place picker and suggested target">
-<img src="docs/screenshots/7-training-target.png" width="220" alt="Timer running with target">
+<img src="docs/screenshots/10-edit.png" width="220" alt="Edit a session">
 <img src="docs/screenshots/8-car-history.png" width="220" alt="Graph and history for Car">
 </p>
 
-## Suggested duration (v0.2)
+## Suggested duration
 
-Per place, based on the actual duration of the most recent session there:
-**went well → +10 %**, **didn't go well → −10 %**, rounded to a natural value
-(5 s under 1 min, 15 s up to 5 min, 30 s up to 15 min, 1 min up to 1 h, then 5 min).
-The target is only a note: the timer always runs until you tap End training.
-Full rules: [docs/PLAN-v0.2.md](docs/PLAN-v0.2.md).
+Per place, based on the most recent session there:
+
+| Last session | Suggestion |
+|---|---|
+| Went well | +10 % |
+| Went well, right after one that didn't | same duration again (grow after two good in a row) |
+| Went well, but ended before 90 % of its target | same target again |
+| Didn't go well | −10 % |
+
+Rounded to a natural value (5 s under 1 min, 15 s up to 5 min, 30 s up to 15 min,
+1 min up to 1 h, then 5 min). The target is only a note: the timer always runs until you
+tap End training. Details: [docs/PLAN-v0.2.md](docs/PLAN-v0.2.md), [docs/PLAN-v0.3.md](docs/PLAN-v0.3.md).
+
+## Editing and backup
+
+- Tap a session in *Previous sessions* to change its place, result, duration or target, or delete it.
+- **Your data** (bottom of the screen): *Save backup* (a file you can keep in Files/iCloud/mail),
+  *Export for Excel*, and *Restore from backup* (adds sessions from a backup; never removes any).
 
 ## Get it on your phone
 
@@ -38,7 +51,7 @@ or clearing Safari/Chrome website data deletes the history.
 ## How it's built (short version)
 
 See [docs/PLAN.md](docs/PLAN.md) for the plain-language explanation and
-[docs/PLAN-v0.2.md](docs/PLAN-v0.2.md) for what v0.2 added.
+[docs/PLAN-v0.2.md](docs/PLAN-v0.2.md) / [docs/PLAN-v0.3.md](docs/PLAN-v0.3.md) for what each version added.
 
 | File | What it does |
 |---|---|
@@ -47,6 +60,7 @@ See [docs/PLAN.md](docs/PLAN.md) for the plain-language explanation and
 | `src/app.js` | Connects buttons to logic and redraws the screen |
 | `src/training.js` | The rules: start, end, rate, places, durations (no screen code) |
 | `src/progression.js` | Suggested next duration and rounding |
+| `src/backup.js` | Backup file, restore (merge) and Excel export |
 | `src/store.js` | Saves/loads data on the phone, upgrades v0.1 data |
 | `src/chart.js` | Draws the graph |
 | `sw.js`, `manifest.webmanifest`, `icon*` | Make it installable and work offline |
@@ -69,4 +83,4 @@ v0.1 sessions into **Home**. The original v0.1 data is left untouched on the pho
 
 ## Not built yet (on purpose)
 
-Multiple dogs, notes, editing or deleting past sessions, export/backup.
+Multiple dogs, notes, automatic cloud backup.
