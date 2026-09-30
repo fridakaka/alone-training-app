@@ -24,6 +24,38 @@ export function createInitialState() {
   };
 }
 
+// ---------- place (context) names ----------
+// Each place has a stable internal id (home / car / outside-shop). Sessions point to the id,
+// so renaming only changes the label – sessions are never moved, copied or deleted.
+
+export const MAX_CONTEXT_NAME = 30;
+
+export function cleanContextName(name) {
+  return String(name ?? '').normalize('NFC').trim();
+}
+
+// Returns an error message, or null when the names can be saved.
+// `names` is { [contextId]: name } and must cover every existing context.
+export function validateContextNames(state, names) {
+  const cleaned = state.contexts.map((c) => cleanContextName(names[c.id]));
+  if (cleaned.some((n) => n === '')) return 'Every place needs a name.';
+  if (cleaned.some((n) => [...n].length > MAX_CONTEXT_NAME)) {
+    return `Names can be at most ${MAX_CONTEXT_NAME} characters.`;
+  }
+  const keys = cleaned.map((n) => n.toLocaleLowerCase('sv'));
+  if (new Set(keys).size !== keys.length) return 'Two places can\'t have the same name.';
+  return null;
+}
+
+// Only the labels change. Returns the same state unchanged if the names are invalid.
+export function renameContexts(state, names) {
+  if (validateContextNames(state, names)) return state;
+  return {
+    ...state,
+    contexts: state.contexts.map((c) => ({ ...c, name: cleanContextName(names[c.id]) })),
+  };
+}
+
 export function selectContext(state, contextId) {
   if (state.active || !state.contexts.some((c) => c.id === contextId)) return state;
   return { ...state, selectedContextId: contextId };

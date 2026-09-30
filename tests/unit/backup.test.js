@@ -82,16 +82,64 @@ test('Excel export has one row per session, oldest first, semicolon separated', 
   const state = { ...createInitialState(), sessions: [sess('s2', { contextId: 'outside-shop', targetSec: 120, result: 'bad' }), sess('s1')] };
   const lines = buildCsv(state).trim().split('\r\n');
   assert.equal(lines[0], 'sep=;');
-  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions');
+  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions;Place ID');
   assert.equal(lines.length, 4);
-  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well;;;Yes$/);
-  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;Yes$/);
+  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well;;;Yes;home$/);
+  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;Yes;outside-shop$/);
   const withNew = { ...state, sessions: [sess('s3', { result: 'bad', anxietyOnsetSec: 45 }), sess('s4', { uncertain: true })] };
   const [, , a, b] = buildCsv(withNew).trim().split('\r\n');
-  assert.match(a, /;Didn't go well;45;0:45;Yes$/);
-  assert.match(b, /;Went well;;;No$/);
+  assert.match(a, /;Didn't go well;45;0:45;Yes;home$/);
+  assert.match(b, /;Went well;;;No;home$/);
 });
 
 test('backup file name contains the date', () => {
   assert.match(backupFileName('json', Date.UTC(2026, 8, 29, 12)), /^alone-time-2026-09-29\.json$/);
+});
+
+// ---------- v0.6: place names ----------
+import { renameContexts } from '../../src/training.js';
+import { nameChanges } from '../../src/backup.js';
+
+const RENAMED = { home: 'Sovrummet', car: 'Bilburen', 'outside-shop': 'Hela lägenheten' };
+
+test('Excel export uses the names shown in the app, plus the stable place ID', () => {
+  const state = renameContexts({ ...createInitialState(), sessions: [sess('s1', { contextId: 'car' })] }, RENAMED);
+  const [, , row] = buildCsv(state).trim().split('\r\n');
+  assert.match(row, /;Bilburen;90;1:30;/);
+  assert.match(row, /;car$/);
+});
+
+test('new backups contain the place names, and restore reads them back', () => {
+  const state = renameContexts({ ...createInitialState(), sessions: [sess('s1', { contextId: 'car' })] }, RENAMED);
+  const { sessions, contextNames } = parseBackup(buildBackup(state));
+  assert.deepEqual(contextNames, RENAMED);
+  assert.equal(sessions[0].contextId, 'car'); // sessions keep the id, not the name
+});
+
+test('old backups without place names: nothing to change, current names are kept', () => {
+  const old = JSON.stringify({ sessions: [sess('s1', { contextId: 'car' })] });
+  const { contextNames, sessions } = parseBackup(old);
+  assert.equal(contextNames, null);
+  const phone = renameContexts(createInitialState(), RENAMED);
+  assert.deepEqual(nameChanges(phone, contextNames), []);
+  const { state } = mergeSessions(phone, sessions);
+  assert.deepEqual(state.contexts.map((c) => c.name), ['Sovrummet', 'Bilburen', 'Hela lägenheten']);
+});
+
+test('backup with default names does not silently overwrite renamed places – differences are reported', () => {
+  const defaults = parseBackup(buildBackup(createInitialState())).contextNames;
+  const phone = renameContexts(createInitialState(), RENAMED);
+  const { state } = mergeSessions(phone, []);
+  assert.equal(state.contexts[1].name, 'Bilburen');
+  assert.deepEqual(nameChanges(phone, defaults).map((c) => [c.id, c.current, c.fromBackup]), [
+    ['home', 'Sovrummet', 'Home'], ['car', 'Bilburen', 'Car'], ['outside-shop', 'Hela lägenheten', 'Outside shop'],
+  ]);
+  assert.deepEqual(nameChanges(phone, RENAMED), []);
+});
+
+test('backups with incomplete or invalid names are treated as having no names', () => {
+  const partial = JSON.stringify({ contexts: [{ id: 'home', name: 'X' }], sessions: [] });
+  assert.equal(parseBackup(partial).contextNames, null);
+  const dup = JSON.stringify({ contexts: [{ id: 'home', name: 'A' }, { id: 'car', name: 'a' }, { id: 'outside-shop', name: 'B' }], sessions: [] });
+  assert.deepEqual(nameChanges(createInitialState(), parseBackup(dup).contextNames), []);
 });

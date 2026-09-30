@@ -371,7 +371,7 @@ try {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.tap('#csv-btn')]);
     const csv = await readFile(await dl.path(), 'utf8');
     const lines = csv.trim().split('\r\n');
-    assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions');
+    assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions;Place ID');
     assert.match(csv, /;Didn't go well;20;0:20;Yes/);
     const total = await page.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length);
     assert.equal(lines.length - 2, total);
@@ -600,6 +600,199 @@ try {
     assert.equal(await t('#target-value'), 'No target');
     assert.equal(await t('#target-basis'), 'Worry from the start. Choose an easier step before the next absence.');
     assert.doesNotMatch(await t('#target-chips'), /Repeat/);
+    await c.close();
+  });
+
+  // ---------- v0.6: renaming places ----------
+  let renamedBackup;
+  await step('rename places: old Car sessions stay in "Bilburen" with the same suggestion', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', acceptDownloads: true });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-10-20T18:00:00') });
+    await p.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      const day = (d, h = 10) => new Date(2026, 9, 20 - d, h).getTime();
+      const mk = (id, ctx, d, sec, result, h) => ({
+        id, dogId: 'charlie', contextId: ctx, startedAt: day(d, h), endedAt: day(d, h) + sec * 1000,
+        durationSec: sec, targetSec: null, result,
+      });
+      const sessions = [
+        mk('c1', 'car', 3, 300, 'good'), mk('c2', 'car', 2, 300, 'good'), mk('c3', 'car', 1, 300, 'good'),
+        mk('h1', 'home', 2, 60, 'good', 12), mk('h2', 'home', 1, 60, 'good', 12),
+        mk('s1', 'outside-shop', 1, 40, 'bad', 14),
+      ];
+      localStorage.setItem('alone-training:v2', JSON.stringify({
+        schemaVersion: 2, dogs: [{ id: 'charlie', name: 'Charlie' }],
+        contexts: [{ id: 'home', name: 'Home' }, { id: 'car', name: 'Car' }, { id: 'outside-shop', name: 'Outside shop' }],
+        selectedContextId: 'car', active: null, pending: null, sessions,
+      }));
+    });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    const pickP = (name) => p.locator('#context-picker .seg', { hasText: name }).tap();
+    const snapshot = async () => ({ value: await t('#target-value'), basis: await t('#target-basis'), rows: await p.locator('#history li').count() });
+
+    // Existing users keep the default names.
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Home', 'Car', 'Outside shop']);
+    const carBefore = await snapshot();
+    await pickP('Home');
+    const homeBefore = await snapshot();
+    await pickP('Outside shop');
+    const shopBefore = await snapshot();
+    await pickP('Car');
+    assert.equal(carBefore.value, '5:30');
+
+    // The settings are folded away below the main flow.
+    assert.ok(await p.isHidden('#places-form'));
+    await p.tap('#places-details summary');
+    assert.ok(await p.isVisible('#places-form'));
+    assert.equal(await p.inputValue('#place-name-car'), 'Car');
+
+    // Empty, duplicate and too long names are refused with a clear message.
+    await p.fill('#place-name-car', '   ');
+    await p.tap('#places-save');
+    assert.equal(await t('#places-error'), 'Every place needs a name.');
+    await p.fill('#place-name-car', ' home ');
+    await p.tap('#places-save');
+    assert.equal(await t('#places-error'), "Two places can't have the same name.");
+    await p.fill('#place-name-car', 'x'.repeat(31));
+    await p.tap('#places-save');
+    assert.equal(await t('#places-error'), 'Names can be at most 30 characters.');
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Home', 'Car', 'Outside shop']);
+
+    // Cancel restores the saved names.
+    await p.tap('#places-cancel');
+    assert.ok(await p.isHidden('#places-form'));
+    await p.tap('#places-details summary');
+    assert.equal(await p.inputValue('#place-name-car'), 'Car');
+
+    // Save, with spaces trimmed and Swedish characters.
+    await p.fill('#place-name-home', '  Hela lägenheten ');
+    await p.fill('#place-name-car', 'Bilburen');
+    await p.fill('#place-name-outside-shop', 'Sovrummet');
+    await p.screenshot({ path: OUT + '15-place-names.png', fullPage: true });
+    await p.tap('#places-save');
+    assert.equal(await t('#places-status'), 'Place names saved.');
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Sovrummet']);
+
+    // Everywhere the place is shown.
+    assert.equal(await t('h1'), 'Charlie · Bilburen');
+    assert.equal(await t('#progress-context'), 'Bilburen');
+    assert.equal(await t('#history-context'), 'Bilburen');
+    assert.equal(await p.textContent('#help-places'), 'Hela lägenheten, Bilburen and Sovrummet');
+    // Same history and same progression as before.
+    assert.deepEqual(await snapshot(), carBefore);
+    await pickP('Hela lägenheten');
+    assert.deepEqual(await snapshot(), homeBefore);
+    await pickP('Sovrummet');
+    assert.deepEqual(await snapshot(), shopBefore);
+    await pickP('Bilburen');
+
+    // A new session in the renamed place joins the old ones. Rename WHILE it runs.
+    await p.tap('#start-btn');
+    await p.clock.runFor(60_000);
+    await p.tap('#places-details summary');
+    await p.fill('#place-name-outside-shop', 'Utanför affären');
+    await p.tap('#places-save');
+    await p.clock.runFor(30_000);
+    assert.equal(await t('#timer'), '01:30');
+    assert.equal(await t('h1'), 'Charlie · Bilburen');
+    await p.screenshot({ path: OUT + '16-rename-while-training.png', fullPage: true });
+    await p.tap('#end-btn');
+    await p.tap('#good-btn');
+    assert.equal(await p.locator('#history li').count(), 4);
+    const stored = await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')));
+    assert.equal(stored.sessions.filter((x) => x.contextId === 'car').length, 4);
+    assert.equal(stored.sessions.length, 7); // nothing moved, copied or deleted
+
+    // Edit sheet shows the new names too.
+    await p.locator('#history .row').first().tap();
+    assert.deepEqual(await p.locator('#edit-context .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Utanför affären']);
+    await p.tap('#edit-cancel');
+
+    // Reload: names and sessions are still there.
+    await p.reload();
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Utanför affären']);
+    assert.equal(await p.locator('#history li').count(), 4);
+
+    // Excel: shown names + stable id.
+    const [csvDl] = await Promise.all([p.waitForEvent('download'), p.tap('#csv-btn')]);
+    const csv = await readFile(await csvDl.path(), 'utf8');
+    assert.match(csv, /;Bilburen;300;5:00;;;Went well;;;Yes;car\r\n/);
+    assert.match(csv, /;Hela lägenheten;60;1:00;/);
+    assert.match(csv, /;Utanför affären;40;0:40;;;Didn't go well;;;Yes;outside-shop/);
+
+    // New backup with own names.
+    const [dl] = await Promise.all([p.waitForEvent('download'), p.tap('#backup-btn')]);
+    renamedBackup = OUT + 'backup-renamed.json';
+    await dl.saveAs(renamedBackup);
+    const data = JSON.parse(await readFile(renamedBackup, 'utf8'));
+    assert.deepEqual(data.contexts.map((x) => x.name), ['Hela lägenheten', 'Bilburen', 'Utanför affären']);
+
+    // Old backup without names: sessions only, current names untouched, no name prompt.
+    const oldBackup = { name: 'old.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({
+      sessions: [{ id: 'old1', dogId: 'charlie', contextId: 'car', startedAt: new Date(2026, 8, 1, 10).getTime(), durationSec: 120, result: 'good' }],
+    })) };
+    await p.setInputFiles('#restore-input', oldBackup);
+    await p.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
+    assert.match(await t('#data-status'), /Restored 1 session/);
+    assert.ok(await p.isHidden('#restore-names'));
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Utanför affären']);
+    assert.equal(await p.locator('#history li').count(), 5); // the old Car session lands in Bilburen
+
+    // Long names still fit the phone width.
+    await p.tap('#places-details summary');
+    await p.fill('#place-name-home', 'Hela lägenheten med balkongen');
+    await p.tap('#places-save');
+    const overflow = await p.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+    assert.equal(overflow, false);
+    await p.screenshot({ path: OUT + '17-long-names.png', fullPage: true });
+    await c.close();
+  });
+
+  await step('restoring a backup with other names never changes names silently; the user chooses', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    watch(p);
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    await p.setInputFiles('#restore-input', renamedBackup);
+    await p.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
+    assert.match(await t("#data-status"), /Restored 7 sessions/); // backup taken before the old session was restored
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Home', 'Car', 'Outside shop']);
+    assert.ok(await p.isVisible('#restore-names'));
+    assert.match(await t('#restore-names-text'), /“Bilburen” instead of “Car”/);
+    assert.match(await t('#restore-names-text'), /Your current names were kept\./);
+    await p.screenshot({ path: OUT + '18-restore-names.png', fullPage: true });
+    await p.tap('#restore-names-apply');
+    assert.ok(await p.isHidden('#restore-names'));
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Utanför affären']);
+    await p.reload();
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Utanför affären']);
+    // "Keep my names" path.
+    const c2 = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p2 = await c2.newPage();
+    await p2.goto(APP);
+    await p2.setInputFiles('#restore-input', renamedBackup);
+    await p2.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
+    await p2.tap('#restore-names-keep');
+    assert.deepEqual(await p2.locator('#context-picker .seg').allTextContents(), ['Home', 'Car', 'Outside shop']);
+    await c2.close();
+    await c.close();
+  });
+
+  await step('names are shown as plain text (no HTML from a name)', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    watch(p);
+    await p.goto(APP);
+    await p.tap('#places-details summary');
+    await p.fill('#place-name-car', '<b>Bil</b> & "co"');
+    await p.tap('#places-save');
+    assert.equal(await p.locator('#context-picker b').count(), 0);
+    assert.equal((await p.locator('#context-picker .seg').nth(1).textContent()), '<b>Bil</b> & "co"');
     await c.close();
   });
 

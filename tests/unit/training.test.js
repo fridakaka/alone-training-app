@@ -248,3 +248,61 @@ test('delete removes only that session', () => {
   assert.equal(d.sessions[0].id, s.sessions[1].id);
   assert.equal(deleteSession(s, 'nope').sessions.length, 2);
 });
+
+// ---------- v0.6: renaming places ----------
+import { renameContexts, validateContextNames, cleanContextName, MAX_CONTEXT_NAME } from '../../src/training.js';
+
+const names = (home, car, shop) => ({ home, car, 'outside-shop': shop });
+
+test('renaming changes only labels; ids, sessions and suggestions stay the same', () => {
+  const T0 = 200 * DAY;
+  let s = createInitialState();
+  for (const d of [0, 1, 2]) {
+    s = runSession(s, 'car', 300, 'good', { start: T0 + d * DAY });
+    s = runSession(s, 'home', 60, 'good', { start: T0 + d * DAY + 3600e3 });
+  }
+  s = runSession(s, 'outside-shop', 40, 'bad', { start: T0 + 2 * DAY + 7200e3 });
+  const now = T0 + 3 * DAY;
+  const next = (st, ctx) => suggestTarget(sessionsFor(st, { dogId: 'charlie', contextId: ctx }), { now });
+  const before = ['home', 'car', 'outside-shop'].map((c) => next(s, c));
+
+  const r = renameContexts(s, names('Sovrummet', 'Bilburen', 'Hela lägenheten'));
+  assert.deepEqual(r.contexts.map((c) => c.id), ['home', 'car', 'outside-shop']);
+  assert.deepEqual(r.contexts.map((c) => c.name), ['Sovrummet', 'Bilburen', 'Hela lägenheten']);
+  assert.equal(r.sessions, s.sessions); // not copied, moved or changed
+  assert.deepEqual(['home', 'car', 'outside-shop'].map((c) => next(r, c)), before);
+  assert.equal(sessionsFor(r, { dogId: 'charlie', contextId: 'car' }).length, 3);
+
+  // A new session in the renamed place joins the old ones.
+  const more = runSession(r, 'car', 330, 'good', { start: now });
+  assert.equal(sessionsFor(more, { dogId: 'charlie', contextId: 'car' }).length, 4);
+});
+
+test('names are trimmed; empty, duplicate and too long names are rejected with a message', () => {
+  const s = createInitialState();
+  assert.equal(validateContextNames(s, names('  Sovrummet ', 'Bilburen', 'Butiken')), null);
+  assert.equal(renameContexts(s, names('  Sovrummet ', 'Bilburen', 'Butiken')).contexts[0].name, 'Sovrummet');
+  assert.match(validateContextNames(s, names('   ', 'Bilburen', 'Butiken')), /needs a name/);
+  assert.match(validateContextNames(s, names('Bilen', ' bilen', 'Butiken')), /same name/);
+  assert.match(validateContextNames(s, names('Å'.repeat(MAX_CONTEXT_NAME + 1), 'B', 'C')), /at most 30/);
+  assert.equal(validateContextNames(s, names('Å'.repeat(MAX_CONTEXT_NAME), 'B', 'C')), null);
+  // Invalid names never change the state.
+  assert.equal(renameContexts(s, names('', 'B', 'C')), s);
+});
+
+test('Swedish characters work, also when typed as decomposed letters', () => {
+  const s = renameContexts(createInitialState(), names('Hallen', 'Bilen', 'Utanför affären'));
+  assert.equal(s.contexts[2].name, 'Utanför affären');
+  assert.equal(cleanContextName('a\u030Ar'), 'år'); // å typed as a + ring → one character
+  assert.match(validateContextNames(s, names('år', 'a\u030Ar', 'x')), /same name/);
+});
+
+test('renaming during a running session does not touch the timer or the session\'s place', () => {
+  let s = selectContext(createInitialState(), 'car');
+  s = startSession(s, { dogId: 'charlie', contextId: 'car', targetSec: 60, now: 1000 });
+  const r = renameContexts(s, names('Home', 'Bilburen', 'Outside shop'));
+  assert.deepEqual(r.active, s.active);
+  assert.equal(elapsedSeconds(r.active, 61_000), 60);
+  const done = recordResult(endSession(r, 61_000), 'good');
+  assert.equal(done.sessions[0].contextId, 'car');
+});

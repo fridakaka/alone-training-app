@@ -5,7 +5,7 @@
 // v0.2 saves under a NEW key. The v0.1 key is only ever read, never written or
 // deleted, so the original data always stays on the phone as a backup.
 
-import { createInitialState, DEFAULT_CONTEXTS, SCHEMA_VERSION } from './training.js';
+import { createInitialState, DEFAULT_CONTEXTS, SCHEMA_VERSION, cleanContextName, MAX_CONTEXT_NAME } from './training.js';
 
 export const KEY = 'alone-training:v2';
 export const V1_KEY = 'alone-training:v1';
@@ -64,10 +64,14 @@ export function migrateFromV1(storage = globalThis.localStorage) {
 // Makes sure all three contexts exist and the selected one is valid.
 function normalizeV2(data) {
   const fresh = createInitialState();
-  const contexts = [...(Array.isArray(data.contexts) ? data.contexts : [])];
-  for (const c of DEFAULT_CONTEXTS) {
-    if (!contexts.some((x) => x.id === c.id)) contexts.push({ ...c });
-  }
+  const saved = Array.isArray(data.contexts) ? data.contexts : [];
+  // Always exactly the default places, in their fixed order. A saved (renamed) label is kept;
+  // a missing or unusable label falls back to the default name.
+  const contexts = DEFAULT_CONTEXTS.map((c) => {
+    const raw = saved.find((x) => x && x.id === c.id)?.name;
+    const name = typeof raw === 'string' ? cleanContextName(raw) : '';
+    return { ...c, name: name && [...name].length <= MAX_CONTEXT_NAME ? name : c.name };
+  });
   const state = { ...fresh, ...data, schemaVersion: SCHEMA_VERSION, contexts };
   if (!contexts.some((c) => c.id === state.selectedContextId)) state.selectedContextId = 'home';
   return state;

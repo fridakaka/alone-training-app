@@ -111,6 +111,22 @@
       <button id="history-more" class="btn-link" type="button" hidden></button>
     </section>
 
+    <section id="places-section" class="card" aria-labelledby="places-title">
+      <details id="places-details" class="settings">
+        <summary><h2 id="places-title">Place names</h2></summary>
+        <p class="hint">Rename the three places. Their history and time suggestions stay with them.</p>
+        <form id="places-form" novalidate>
+          <div id="places-fields" class="place-fields"><!-- filled by app.js --></div>
+          <p id="places-error" class="form-error" role="alert"></p>
+          <div class="sheet-actions">
+            <button id="places-cancel" type="button" class="btn btn-quiet">Cancel</button>
+            <button id="places-save" type="submit" class="btn btn-primary">Save names</button>
+          </div>
+        </form>
+        <p id="places-status" class="data-status" role="status"></p>
+      </details>
+    </section>
+
     <section id="data-section" class="card" aria-labelledby="data-title">
       <h2 id="data-title">Your data</h2>
       <p class="hint">Stored only on this phone. Save a backup now and then.
@@ -123,6 +139,13 @@
         </label>
       </div>
       <p id="data-status" class="data-status" role="status"></p>
+      <div id="restore-names" class="restore-names" hidden>
+        <p id="restore-names-text" class="hint"></p>
+        <div class="chips">
+          <button id="restore-names-apply" class="chip chip-strong" type="button">Use names from backup</button>
+          <button id="restore-names-keep" class="chip" type="button">Keep my names</button>
+        </div>
+      </div>
     </section>
 
     <section id="help-section" class="card" aria-labelledby="help-title">
@@ -133,7 +156,9 @@
           your history, but don't automatically decide today's time. Every dog and every day is
           different. Adjust the time to how your dog actually reacts.</p>
         <ul>
-          <li>Only the 5 most recent sessions from the last 7 days in the chosen place count.
+          <li>Each place (<span id="help-places">Home, Car and Outside shop</span>) has its own
+            history and suggestions. Only the 5 most recent sessions from the last 7 days in the
+            chosen place count.
             Several sessions on one day count together as one day.</li>
           <li><strong>Small increase</strong> (about +10 %) when a time has gone well at least
             twice, on different days, and the latest session confirmed it.</li>

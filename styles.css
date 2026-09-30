@@ -358,3 +358,35 @@ button.target-value:focus-visible { outline: 3px solid var(--good); outline-offs
 .target-edit .chips { margin-top: 6px; }
 .chip-strong { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
 .target-history { margin: 2px 0 0; font-size: 13px; color: var(--ink-3); }
+
+/* ---------- v0.6: place names ---------- */
+.seg { overflow-wrap: anywhere; hyphens: auto; line-height: 1.2; padding: 6px; }
+h1, .card h2 { overflow-wrap: anywhere; }
+.settings summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.settings summary::-webkit-details-marker { display: none; }
+.settings summary::after { content: "Edit"; font-size: 14px; color: var(--ink-2); font-weight: 500; }
+.settings[open] summary::after { content: ""; }
+.settings summary h2 { margin: 0; }
+.settings summary:focus-visible { outline: 3px solid var(--good); outline-offset: 4px; border-radius: 8px; }
+.settings[open] summary { margin-bottom: 6px; }
+.place-fields { display: grid; gap: 12px; margin: 10px 0 4px; }
+.place-field { display: grid; gap: 4px; }
+.place-field-label { font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.place-field-hint { font-size: 12px; color: var(--ink-3); }
+.place-field input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 17px; /* >= 16px: no iPhone zoom on focus */
+}
+.place-field input:focus-visible { outline: 3px solid var(--good); outline-offset: 1px; }
+#places-form .sheet-actions { margin-top: 8px; }
+#places-form .form-error { text-align: left; }
+.restore-names { margin-top: 10px; padding: 12px; border-radius: 12px; background: var(--bg); }
+.restore-names .hint { margin: 0 0 8px; color: var(--ink-2); }
+.restore-names .chips { justify-content: flex-start; margin-top: 0; }

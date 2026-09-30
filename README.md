@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.5)
+# Alone Time – dog alone-training tracker (v0.6)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -27,13 +27,23 @@ or train without a target.
 Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
 The app is a training journal – not advice, and it can't tell how long a dog can be alone.
 
+## Place names
+
+The three places (Home, Car, Outside shop) can be renamed under **Place names** further down
+the page. Each place keeps a fixed internal id (`home`, `car`, `outside-shop`); sessions point
+to the id, so a rename only changes the label – history and suggestions stay with the place.
+Names are trimmed, must be unique and non-empty, max 30 characters.
+
 ## Editing and backup
 
 - After *Didn't go well* the app asks (optionally) roughly when worry started – or tap *Don't know*.
 - Tap a session in *Previous sessions* to change its place, result, duration, target, worry time,
   mark it "don't count as progress", or delete it.
 - **Your data** (bottom of the screen): *Save backup* (a file you can keep in Files/iCloud/mail),
-  *Export for Excel*, and *Restore from backup* (adds sessions from a backup; never removes any).
+  *Export for Excel* (shown place names plus a stable *Place ID* column), and *Restore from backup*
+  (adds sessions from a backup; never removes any). Backups include your place names. Restoring
+  never changes your names by itself: if the backup's names differ, the app shows them and lets
+  you choose *Use names from backup* or *Keep my names*. Older backups without names change nothing.
 
 ## Get it on your phone
 

@@ -12,6 +12,10 @@ import {
   deleteSession,
   setAnxietyOnset,
   isValidOnset,
+  renameContexts,
+  validateContextNames,
+  DEFAULT_CONTEXTS,
+  MAX_CONTEXT_NAME,
   formatTimer,
   formatDuration,
   RESULTS,
@@ -20,7 +24,7 @@ import { loadState, saveState } from './store.js';
 import { renderChart, resultText, MAX_BARS } from './chart.js';
 import { stepUp, stepDown, formatTarget, MIN_TARGET_SEC } from './progression.js';
 import { suggestTarget, KINDS } from './suggestion.js';
-import { buildBackup, parseBackup, mergeSessions, buildCsv, backupFileName } from './backup.js';
+import { buildBackup, parseBackup, mergeSessions, buildCsv, backupFileName, nameChanges } from './backup.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -261,18 +265,112 @@ function render() {
 
   renderProgress();
   renderData();
+  renderPlaceNames();
 }
 
+// Place buttons are built with textContent: names are the user's own text.
+// Buttons are created once and only their labels / pressed state are updated.
+function fillPlaceButtons(container, selectedId) {
+  if (container.children.length !== state.contexts.length) {
+    container.replaceChildren(
+      ...state.contexts.map((c) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'seg';
+        b.dataset.context = c.id;
+        return b;
+      }),
+    );
+  }
+  [...container.children].forEach((b, i) => {
+    const c = state.contexts[i];
+    b.dataset.context = c.id;
+    if (b.textContent !== c.name) b.textContent = c.name;
+    b.setAttribute('aria-pressed', String(c.id === selectedId));
+  });
+}
+
+function listNames(names) {
+  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+}
+
+function renderPlaceNames() {
+  $('help-places').textContent = listNames(state.contexts.map((c) => c.name));
+  if (!$('places-details').open) fillPlaceForm();
+}
+
+// ---------- renaming places ----------
+
+function fillPlaceForm() {
+  const box = $('places-fields');
+  if (!box.children.length) {
+    box.replaceChildren(
+      ...state.contexts.map((c, i) => {
+        const label = document.createElement('label');
+        label.className = 'place-field';
+        const title = document.createElement('span');
+        title.className = 'place-field-label';
+        title.textContent = `Place ${i + 1}`;
+        const original = DEFAULT_CONTEXTS.find((d) => d.id === c.id)?.name;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = `place-name-${c.id}`;
+        input.dataset.context = c.id;
+        input.maxLength = MAX_CONTEXT_NAME + 10; // allow pasting a bit extra; validation explains
+        input.autocomplete = 'off';
+        input.spellcheck = false;
+        input.setAttribute('enterkeyhint', 'done');
+        const hint = document.createElement('span');
+        hint.className = 'place-field-hint';
+        hint.textContent = `Originally “${original}”`;
+        label.append(title, input, hint);
+        return label;
+      }),
+    );
+  }
+  for (const c of state.contexts) $(`place-name-${c.id}`).value = c.name;
+  $('places-error').textContent = '';
+}
+
+function readPlaceForm() {
+  return Object.fromEntries(state.contexts.map((c) => [c.id, $(`place-name-${c.id}`).value]));
+}
+
+// Fill the form synchronously when opening. (The "toggle" event fires later and could
+// overwrite what the user has already started typing.)
+$('places-details').querySelector('summary').addEventListener('click', () => {
+  if (!$('places-details').open) {
+    fillPlaceForm();
+    $('places-status').textContent = '';
+  }
+});
+
+$('places-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const names = readPlaceForm();
+  const error = validateContextNames(state, names);
+  if (error) {
+    $('places-error').textContent = error;
+    return;
+  }
+  const next = renameContexts(state, names);
+  const changed = next.contexts.some((c, i) => c.name !== state.contexts[i].name);
+  update(next);
+  fillPlaceForm();
+  $('places-details').open = false;
+  $('places-status').textContent = changed ? 'Place names saved.' : 'No changes.';
+});
+
+$('places-cancel').addEventListener('click', () => {
+  fillPlaceForm();
+  $('places-details').open = false;
+  $('places-status').textContent = '';
+});
+
+$('places-form').addEventListener('input', () => ($('places-error').textContent = ''));
+
 function renderReady() {
-  const picker = $('context-picker');
-  if (!picker.children.length) {
-    picker.innerHTML = state.contexts
-      .map((c) => `<button type="button" class="seg" data-context="${c.id}">${c.name}</button>`)
-      .join('');
-  }
-  for (const btn of picker.children) {
-    btn.setAttribute('aria-pressed', String(btn.dataset.context === state.selectedContextId));
-  }
+  fillPlaceButtons($('context-picker'), state.selectedContextId);
 
   const { suggestion, suggested, repeat, value } = currentTarget();
   const isSuggested = suggested != null && value === suggested;
@@ -422,9 +520,7 @@ function openEditor(id) {
     hour: '2-digit',
     minute: '2-digit',
   });
-  $('edit-context').innerHTML = state.contexts
-    .map((c) => `<button type="button" class="seg" data-context="${c.id}">${c.name}</button>`)
-    .join('');
+  $('edit-context').replaceChildren();
   $('edit-dur-min').value = Math.floor(s.durationSec / 60);
   $('edit-dur-sec').value = s.durationSec % 60;
   $('edit-tgt-min').value = s.targetSec ? Math.floor(s.targetSec / 60) : '';
@@ -439,9 +535,7 @@ function openEditor(id) {
 }
 
 function renderEditor() {
-  for (const b of $('edit-context').children) {
-    b.setAttribute('aria-pressed', String(b.dataset.context === editing.contextId));
-  }
+  fillPlaceButtons($('edit-context'), editing.contextId);
   for (const b of dialog.querySelectorAll('[data-result]')) {
     b.setAttribute('aria-pressed', String(b.dataset.result === editing.result));
   }
@@ -559,7 +653,7 @@ $('restore-input').addEventListener('change', async (e) => {
   if (!file) return;
   status('Reading backup…');
   try {
-    const { sessions } = parseBackup(await file.text());
+    const { sessions, contextNames } = parseBackup(await file.text());
     try {
       localStorage.setItem(`alone-training:before-restore-${Date.now()}`, JSON.stringify(state));
     } catch {}
@@ -570,9 +664,36 @@ $('restore-input').addEventListener('change', async (e) => {
         ? `Restored ${added} session${added === 1 ? '' : 's'}.${skipped ? ` ${skipped} were already here.` : ''}`
         : 'Nothing new in that backup – all its sessions are already here.',
     );
+    offerBackupNames(contextNames);
   } catch (err) {
     status(err.message || 'Could not read that file.');
   }
+});
+
+// Restoring never changes place names by itself. If the backup has different names,
+// show them and let the user choose. Backups without names change nothing.
+let pendingBackupNames = null;
+
+function offerBackupNames(contextNames) {
+  const changes = nameChanges(state, contextNames);
+  pendingBackupNames = changes.length ? contextNames : null;
+  $('restore-names').hidden = !changes.length;
+  $('restore-names-text').textContent = changes.length
+    ? `The backup uses other place names: ${changes
+        .map((c) => `“${c.fromBackup}” instead of “${c.current}”`)
+        .join(', ')}. Your current names were kept.`
+    : '';
+}
+
+$('restore-names-apply').addEventListener('click', () => {
+  if (pendingBackupNames) update(renameContexts(state, pendingBackupNames));
+  offerBackupNames(null);
+  status('Place names from the backup are now used.');
+});
+
+$('restore-names-keep').addEventListener('click', () => {
+  offerBackupNames(null);
+  status('Your place names were kept.');
 });
 
 // Timer catches up instantly when you come back to the app.

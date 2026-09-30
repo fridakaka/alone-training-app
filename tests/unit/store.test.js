@@ -29,3 +29,26 @@ test('saving reports failure when storage is full/blocked', () => {
   const broken = { getItem: () => null, setItem: () => { throw new Error('quota'); } };
   assert.equal(saveState(createInitialState(), broken), false);
 });
+
+// ---------- v0.6: place names are stored ----------
+import { renameContexts } from '../../src/training.js';
+
+test('renamed places survive save and load; old data keeps the default names', () => {
+  const store = memoryStorage();
+  const renamed = renameContexts(createInitialState(), { home: 'Sovrummet', car: 'Bilburen', 'outside-shop': 'Hela lägenheten' });
+  saveState(renamed, store);
+  assert.deepEqual(loadState(store).contexts, renamed.contexts);
+  // Data saved before names could change: defaults.
+  const old = memoryStorage();
+  old.setItem('alone-training:v2', JSON.stringify({ schemaVersion: 2, sessions: [], contexts: [{ id: 'home', name: 'Home' }] }));
+  assert.deepEqual(loadState(old).contexts.map((c) => c.name), ['Home', 'Car', 'Outside shop']);
+});
+
+test('unusable stored names fall back to the default name', () => {
+  const store = memoryStorage();
+  store.setItem('alone-training:v2', JSON.stringify({
+    schemaVersion: 2, sessions: [],
+    contexts: [{ id: 'home', name: '   ' }, { id: 'car', name: 42 }, { id: 'outside-shop', name: 'x'.repeat(99) }],
+  }));
+  assert.deepEqual(loadState(store).contexts.map((c) => c.name), ['Home', 'Car', 'Outside shop']);
+});

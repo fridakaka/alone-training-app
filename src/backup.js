@@ -1,7 +1,7 @@
 // Backup, restore and Excel export. Pure functions: no DOM, no storage.
 // Restoring MERGES: sessions already on the phone are never removed or changed.
 
-import { RESULTS } from './training.js';
+import { RESULTS, DEFAULT_CONTEXTS, cleanContextName, validateContextNames } from './training.js';
 
 export const BACKUP_APP = 'alone-time';
 
@@ -21,7 +21,9 @@ export function buildBackup(state, now = Date.now()) {
 }
 
 // Accepts a v0.2+ backup file or raw v0.1 / v0.2 app data.
-// Returns { sessions } with only valid sessions, or throws a readable Error.
+// Returns { sessions, contextNames } with only valid sessions, or throws a readable Error.
+// contextNames is { [contextId]: name } from the file, or null if it has none (older backups).
+// Restoring never applies these names by itself – see nameChanges().
 export function parseBackup(text) {
   let data;
   try {
@@ -49,7 +51,28 @@ export function parseBackup(text) {
         : null,
     uncertain: s.result === RESULTS.GOOD && s.uncertain === true,
   }));
-  return { sessions };
+  return { sessions, contextNames: readContextNames(data.contexts) };
+}
+
+function readContextNames(contexts) {
+  if (!Array.isArray(contexts)) return null;
+  const names = {};
+  for (const c of DEFAULT_CONTEXTS) {
+    const raw = contexts.find((x) => x && x.id === c.id)?.name;
+    const name = typeof raw === 'string' ? cleanContextName(raw) : '';
+    if (!name) return null; // incomplete: treat as "no names in this backup"
+    names[c.id] = name;
+  }
+  return names;
+}
+
+// Places whose name in the backup differs from the name on the phone:
+// [{ id, current, fromBackup }]. Empty if the backup has no names or the same names.
+export function nameChanges(state, contextNames) {
+  if (!contextNames || validateContextNames(state, contextNames)) return [];
+  return state.contexts
+    .filter((c) => contextNames[c.id] !== c.name)
+    .map((c) => ({ id: c.id, current: c.name, fromBackup: contextNames[c.id] }));
 }
 
 function isValidSession(s) {
@@ -98,11 +121,12 @@ export function buildCsv(state) {
         s.anxietyOnsetSec ?? '',
         mmss(s.anxietyOnsetSec),
         s.uncertain ? 'No' : 'Yes',
+        s.contextId, // stable id: stays the same when a place is renamed
       ];
     });
   const header = [
     'Date', 'Time', 'Place', 'Actual (s)', 'Actual', 'Target (s)', 'Target', 'Result',
-    'Worried after (s)', 'Worried after', 'Counted for suggestions',
+    'Worried after (s)', 'Worried after', 'Counted for suggestions', 'Place ID',
   ];
   return ['sep=;', ...[header, ...rows].map((r) => r.map(csvCell).join(';'))].join('\r\n') + '\r\n';
 }
