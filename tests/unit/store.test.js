@@ -52,3 +52,28 @@ test('unusable stored names fall back to the default name', () => {
   }));
   assert.deepEqual(loadState(store).contexts.map((c) => c.name), ['Home', 'Car', 'Outside shop']);
 });
+
+// ---------- v0.7: first start and language ----------
+test('a brand-new phone sees the welcome; existing data never does', () => {
+  assert.equal(loadState(memoryStorage()).onboarded, false);
+  const old = memoryStorage();
+  old.setItem('alone-training:v2', JSON.stringify({ schemaVersion: 2, sessions: [], dogs: [{ id: 'charlie', name: 'Charlie' }] }));
+  const s = loadState(old);
+  assert.equal(s.onboarded, true);
+  assert.equal(s.lang, null); // not chosen yet: shown the small optional choice
+  assert.equal(s.dogs[0].name, 'Charlie');
+  const v1 = memoryStorage();
+  v1.setItem('alone-training:v1', JSON.stringify({ schemaVersion: 1, sessions: [] }));
+  assert.equal(loadState(v1).onboarded, true);
+});
+
+test('language and dog name are saved; unusable values fall back safely', () => {
+  const store = memoryStorage();
+  saveState({ ...createInitialState(), onboarded: true, lang: 'sv', dogs: [{ id: 'charlie', name: 'Majken' }] }, store);
+  const s = loadState(store);
+  assert.equal(s.lang, 'sv');
+  assert.equal(s.dogs[0].name, 'Majken');
+  store.setItem('alone-training:v2', JSON.stringify({ schemaVersion: 2, sessions: [], lang: 'xx', dogs: [{ id: 'charlie', name: '  ' }] }));
+  assert.equal(loadState(store).lang, null);
+  assert.equal(loadState(store).dogs[0].name, 'Charlie');
+});

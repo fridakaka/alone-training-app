@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.6)
+# Alone Time – dog alone-training tracker (v0.7)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -27,6 +27,31 @@ or train without a target.
 Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
 The app is a training journal – not advice, and it can't tell how long a dog can be alone.
 
+## Dog name, language, introduction, comments (v0.7)
+
+- **First start** (new users only): choose Svenska/English, enter the dog's name, and read a
+  very short introduction (also under *Help → About Alone Time*). Existing data never shows it:
+  "Charlie" and all sessions stay until the user changes them.
+- **Language**: all interface text is in `src/i18n.js` (English + Swedish, same keys – checked by
+  a test). Existing users who haven't chosen see a small optional choice on the main screen (never
+  during a session). Changed later under *Settings*. Dates use the chosen language.
+- **Default place names**: new users get them in the language chosen at first start
+  (Hemma / Bilen / Utanför affären, or Home / Car / Outside shop). After that the names are the
+  user's own text: switching language never renames places – default or renamed.
+- **Dog name**: *Settings*. Only the label changes; the dog's internal id stays (`charlie`), so no
+  session moves.
+- **Comment**: optional text on the result screen, saved with *Went well* / *Didn't go well*
+  (max 500 characters). Shown shortened in the history, in full when a session is opened, and
+  editable/removable there. Comments are never used by the time suggestion.
+
+## App icon
+
+Master artwork: `alone-time-app-icon-1024.png`. Sizes are made with `npm run icons` into
+`icons/alone-time-{32,180,192,512}.png` (new file names so browsers don't keep a cached old icon).
+**iPhone:** the home-screen icon of an already installed app is not updated automatically by iOS.
+To see the new icon, remove Alone Time from the home screen and add it again from Safari
+(*Share → Add to Home Screen*). Your data is kept: it belongs to the website, not the icon.
+
 ## Place names
 
 The three places (Home, Car, Outside shop) can be renamed under **Place names** further down
@@ -40,10 +65,12 @@ Names are trimmed, must be unique and non-empty, max 30 characters.
 - Tap a session in *Previous sessions* to change its place, result, duration, target, worry time,
   mark it "don't count as progress", or delete it.
 - **Your data** (bottom of the screen): *Save backup* (a file you can keep in Files/iCloud/mail),
-  *Export for Excel* (shown place names plus a stable *Place ID* column), and *Restore from backup*
+  *Export for Excel* (shown place names, a stable *Place ID* column and a *Comment* column;
+  text that looks like a formula is prefixed with ' so Excel shows it as text), and *Restore from backup*
   (adds sessions from a backup; never removes any). Backups include your place names. Restoring
-  never changes your names by itself: if the backup's names differ, the app shows them and lets
-  you choose *Use names from backup* or *Keep my names*. Older backups without names change nothing.
+  never changes your settings by itself: if the backup's dog name, language or place names differ,
+  the app shows them and lets you choose *Use settings from backup* or *Keep my settings*. Backups
+  also contain comments. Older backups without these fields change nothing.
 
 ## Get it on your phone
 
@@ -74,7 +101,8 @@ See [docs/PLAN.md](docs/PLAN.md) for the plain-language explanation and
 | `src/backup.js` | Backup file, restore (merge) and Excel export |
 | `src/store.js` | Saves/loads data on the phone, upgrades v0.1 data |
 | `src/chart.js` | Draws the graph |
-| `sw.js`, `manifest.webmanifest`, `icon*` | Make it installable and work offline |
+| `sw.js`, `manifest.webmanifest`, `icons/` | Make it installable and work offline |
+| `src/i18n.js` | All interface text, English and Swedish |
 
 ## For development
 

@@ -282,9 +282,9 @@ test('names are trimmed; empty, duplicate and too long names are rejected with a
   const s = createInitialState();
   assert.equal(validateContextNames(s, names('  Sovrummet ', 'Bilburen', 'Butiken')), null);
   assert.equal(renameContexts(s, names('  Sovrummet ', 'Bilburen', 'Butiken')).contexts[0].name, 'Sovrummet');
-  assert.match(validateContextNames(s, names('   ', 'Bilburen', 'Butiken')), /needs a name/);
-  assert.match(validateContextNames(s, names('Bilen', ' bilen', 'Butiken')), /same name/);
-  assert.match(validateContextNames(s, names('Å'.repeat(MAX_CONTEXT_NAME + 1), 'B', 'C')), /at most 30/);
+  assert.equal(validateContextNames(s, names('   ', 'Bilburen', 'Butiken')), 'empty');
+  assert.equal(validateContextNames(s, names('Bilen', ' bilen', 'Butiken')), 'duplicate');
+  assert.equal(validateContextNames(s, names('Å'.repeat(MAX_CONTEXT_NAME + 1), 'B', 'C')), 'tooLong');
   assert.equal(validateContextNames(s, names('Å'.repeat(MAX_CONTEXT_NAME), 'B', 'C')), null);
   // Invalid names never change the state.
   assert.equal(renameContexts(s, names('', 'B', 'C')), s);
@@ -294,7 +294,7 @@ test('Swedish characters work, also when typed as decomposed letters', () => {
   const s = renameContexts(createInitialState(), names('Hallen', 'Bilen', 'Utanför affären'));
   assert.equal(s.contexts[2].name, 'Utanför affären');
   assert.equal(cleanContextName('a\u030Ar'), 'år'); // å typed as a + ring → one character
-  assert.match(validateContextNames(s, names('år', 'a\u030Ar', 'x')), /same name/);
+  assert.equal(validateContextNames(s, names('år', 'a\u030Ar', 'x')), 'duplicate');
 });
 
 test('renaming during a running session does not touch the timer or the session\'s place', () => {
@@ -305,4 +305,62 @@ test('renaming during a running session does not touch the timer or the session\
   assert.equal(elapsedSeconds(r.active, 61_000), 60);
   const done = recordResult(endSession(r, 61_000), 'good');
   assert.equal(done.sessions[0].contextId, 'car');
+});
+
+// ---------- v0.7: dog name, comments, first start ----------
+import {
+  renameDog, validateDogName, cleanComment, setPendingComment, completeOnboarding, MAX_COMMENT,
+} from '../../src/training.js';
+
+test('dog name: only the label changes; id, sessions and suggestions stay', () => {
+  let s = runSession(createInitialState(), 'home', 60, 'good', { start: 5 * DAY });
+  s = runSession(s, 'home', 60, 'good', { start: 6 * DAY });
+  const before = suggestTarget(sessionsFor(s, { dogId: 'charlie', contextId: 'home' }), { now: 7 * DAY });
+  const r = renameDog(s, '  Majken ');
+  assert.equal(r.dogs[0].id, 'charlie');
+  assert.equal(r.dogs[0].name, 'Majken');
+  assert.equal(r.sessions, s.sessions);
+  assert.deepEqual(suggestTarget(sessionsFor(r, { dogId: 'charlie', contextId: 'home' }), { now: 7 * DAY }), before);
+  assert.equal(validateDogName('   '), 'empty');
+  assert.equal(validateDogName('Ö'.repeat(31)), 'tooLong');
+  assert.equal(validateDogName('Ö'.repeat(30)), null);
+  assert.equal(renameDog(s, ''), s);
+});
+
+test('comments: optional, cleaned, saved with the result, editable and removable', () => {
+  assert.equal(cleanComment('  '), null);
+  assert.equal(cleanComment('a\r\nb\rc'), 'a\nb\nc');
+  assert.equal(cleanComment('x'.repeat(MAX_COMMENT + 50)).length, MAX_COMMENT);
+  assert.equal(cleanComment(42), null);
+
+  // Without a comment.
+  let s = runSession(createInitialState(), 'home', 30, 'good', { start: 0 });
+  assert.equal(s.sessions[0].comment, undefined);
+  // With a comment, and with comment + worry time.
+  s = startSession(s, { dogId: 'charlie', contextId: 'home', now: 100_000 });
+  s = setPendingComment(endSession(s, 190_000), '  Grannhunden skällde ');
+  s = recordResult(s, 'bad');
+  s = setAnxietyOnset(s, s.sessions[1].id, 40);
+  assert.equal(s.sessions[1].comment, 'Grannhunden skällde');
+  assert.equal(s.sessions[1].anxietyOnsetSec, 40);
+
+  const sug = (st) => suggestTarget(sessionsFor(st, { dogId: 'charlie', contextId: 'home' }), { now: 200_000 });
+  const before = sug(s);
+  const edited = updateSession(s, s.sessions[1].id, { comment: 'Gick bra egentligen, 10 minuter!' });
+  assert.equal(edited.sessions[1].comment, 'Gick bra egentligen, 10 minuter!');
+  assert.equal(edited.sessions[1].result, 'bad'); // a comment never changes the result...
+  assert.deepEqual(sug(edited), before); // ...or the suggestion
+  const removed = updateSession(edited, s.sessions[1].id, { comment: '' });
+  assert.equal(removed.sessions[1].comment, null);
+  assert.deepEqual(sug(removed), before);
+});
+
+test('first start: language, dog name and default place names in that language', () => {
+  const s = completeOnboarding(createInitialState(), {
+    lang: 'sv', dogName: 'Majken', placeNames: { home: 'Hemma', car: 'Bilen', 'outside-shop': 'Utanför affären' },
+  });
+  assert.equal(s.onboarded, true);
+  assert.equal(s.lang, 'sv');
+  assert.equal(s.dogs[0].name, 'Majken');
+  assert.deepEqual(s.contexts.map((c) => [c.id, c.name]), [['home', 'Hemma'], ['car', 'Bilen'], ['outside-shop', 'Utanför affären']]);
 });

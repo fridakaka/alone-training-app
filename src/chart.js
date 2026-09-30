@@ -4,17 +4,18 @@
 // so it is readable for colour-blind users too.
 // If a session had a target, a thin horizontal tick marks the target height.
 
-import { formatDuration, RESULTS } from './training.js';
+import { RESULTS } from './training.js';
 import { formatTarget } from './progression.js';
+import { t, locale, formatDuration } from './i18n.js';
 
 export const MAX_BARS = 30;
 
 // "Didn't go well · worried at 0:30", "Went well · not counted". Used by graph and history.
 export function resultText(s) {
-  if (s.result === RESULTS.GOOD) return s.uncertain ? 'Went well · not counted' : 'Went well';
+  if (s.result === RESULTS.GOOD) return s.uncertain ? t('resultNotCounted') : t('good');
   return Number.isFinite(s.anxietyOnsetSec)
-    ? `Didn't go well · worried at ${formatTarget(s.anxietyOnsetSec)}`
-    : "Didn't go well";
+    ? t('resultWorriedAt', { time: formatTarget(s.anxietyOnsetSec) })
+    : t('bad');
 }
 
 const W = 340;
@@ -40,7 +41,7 @@ export function tickLabel(sec) {
 }
 
 const dateFmt = (ms) =>
-  new Date(ms).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  new Date(ms).toLocaleDateString(locale(), { day: 'numeric', month: 'short' });
 
 export function renderChart(allSessions) {
   const sessions = allSessions.slice(-MAX_BARS);
@@ -70,7 +71,7 @@ export function renderChart(allSessions) {
       const x = PAD.left + i * slot + (slot - barW) / 2;
       const h = Math.max(2, baseline - y(s.durationSec));
       const r = Math.min(4, barW / 2, h);
-      const target = s.targetSec ? ` (target ${formatTarget(s.targetSec)})` : '';
+      const target = s.targetSec ? ` (${t('historyTarget', { time: formatTarget(s.targetSec) })})` : '';
       const label = `${dateFmt(s.startedAt)} · ${formatDuration(s.durationSec)}${target} · ${resultText(s)}`;
       const tickW = Math.min(barW + 6, slot);
       const targetTick = s.targetSec
@@ -96,7 +97,7 @@ export function renderChart(allSessions) {
     }`;
 
   return `
-<svg class="chart" viewBox="0 0 ${W} ${H}" role="group" aria-label="Session duration over time">
+<svg class="chart" viewBox="0 0 ${W} ${H}" role="group" aria-label="${t('chartAria')}">
   <defs>
     <pattern id="stripe" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
       <rect width="5" height="5" class="stripe-bg"/>

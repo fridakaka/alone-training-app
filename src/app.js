@@ -1,4 +1,5 @@
 // Connects the screen to the logic. Holds no rules of its own.
+// All interface text comes from i18n.js; the user's own text is always inserted as plain text.
 
 import {
   startSession,
@@ -14,24 +15,38 @@ import {
   isValidOnset,
   renameContexts,
   validateContextNames,
-  DEFAULT_CONTEXTS,
+  renameDog,
+  validateDogName,
+  setPendingComment,
+  completeOnboarding,
   MAX_CONTEXT_NAME,
+  MAX_DOG_NAME,
+  MAX_COMMENT,
   formatTimer,
-  formatDuration,
   RESULTS,
 } from './training.js';
 import { loadState, saveState } from './store.js';
 import { renderChart, resultText, MAX_BARS } from './chart.js';
 import { stepUp, stepDown, formatTarget, MIN_TARGET_SEC } from './progression.js';
 import { suggestTarget, KINDS } from './suggestion.js';
-import { buildBackup, parseBackup, mergeSessions, buildCsv, backupFileName, nameChanges } from './backup.js';
+import {
+  buildBackup, parseBackup, mergeSessions, buildCsv, backupFileName, settingsChanges,
+} from './backup.js';
+import {
+  t, tHtml, setLang, getLang, locale, formatDuration, listNames, escapeHtml, guessLang,
+  LANGS, LANG_NAMES, DEFAULT_PLACE_NAMES,
+} from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
 let state = loadState();
+// New users: guess from the phone until they choose. Existing users without a choice: English
+// (what the app has always shown) until they pick one in the small language banner.
+setLang(state.lang ?? (state.onboarded ? 'en' : guessLang()));
 
 // Still one dog. The context comes from the picker (remembered in state).
 const dogId = () => state.dogs[0].id;
+const dogName = () => state.dogs[0].name;
 const contextId = () =>
   state.active?.contextId ?? state.pending?.contextId ?? state.selectedContextId;
 const current = () => ({ dogId: dogId(), contextId: contextId() });
@@ -46,6 +61,80 @@ function update(next) {
   saveState(state);
   render();
 }
+
+// ---------- static text (translated) ----------
+
+function applyStaticText() {
+  document.documentElement.lang = getLang();
+  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll('[data-i18n-html]')) el.innerHTML = tHtml(el.dataset.i18nHtml);
+  for (const el of document.querySelectorAll('[data-i18n-aria]')) el.setAttribute('aria-label', t(el.dataset.i18nAria));
+  for (const el of document.querySelectorAll('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder);
+  renderIntro($('welcome-intro'));
+  renderIntro($('help-intro-body'));
+  appliedLang = getLang();
+}
+let appliedLang = null;
+
+// The short introduction: shown once on the welcome screen, and always under Help.
+function renderIntro(box) {
+  const p = (key, cls) => Object.assign(document.createElement('p'), { textContent: t(key), className: cls || '' });
+  const steps = document.createElement('ol');
+  steps.className = 'intro-steps';
+  for (const k of ['introStep1', 'introStep2', 'introStep3']) {
+    steps.append(Object.assign(document.createElement('li'), { textContent: t(k) }));
+  }
+  const example = document.createElement('p');
+  example.className = 'intro-example';
+  example.append(Object.assign(document.createElement('strong'), { textContent: `${t('introExampleTitle')}: ` }), t('introExample'));
+  box.replaceChildren(p('introLead', 'intro-lead'), steps, example, p('introNote', 'intro-note'));
+}
+
+// ---------- first start ----------
+
+let welcomeLang = getLang();
+
+document.querySelectorAll('[data-welcome-lang]').forEach((b) =>
+  b.addEventListener('click', () => {
+    welcomeLang = setLang(b.dataset.welcomeLang);
+    render();
+  }),
+);
+
+$('welcome-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const name = $('welcome-dog').value;
+  const err = validateDogName(name);
+  if (err) {
+    $('welcome-error').textContent = dogError(err);
+    $('welcome-dog').focus();
+    return;
+  }
+  // New users get the default place names in the language they chose. From now on the names
+  // are theirs: a later language switch never renames them.
+  update(completeOnboarding(state, { lang: welcomeLang, dogName: name, placeNames: DEFAULT_PLACE_NAMES[welcomeLang] }));
+  $('start-btn').focus();
+});
+$('welcome-form').addEventListener('input', () => ($('welcome-error').textContent = ''));
+
+function dogError(code) {
+  return code === 'tooLong' ? t('errDogTooLong', { max: MAX_DOG_NAME }) : t('errDogEmpty');
+}
+
+function placeError(code) {
+  if (code === 'tooLong') return t('errPlaceTooLong', { max: MAX_CONTEXT_NAME });
+  if (code === 'duplicate') return t('errPlaceDuplicate');
+  return t('errPlaceEmpty');
+}
+
+// ---------- language banner (existing users, optional) ----------
+
+document.querySelectorAll('[data-banner-lang]').forEach((b) =>
+  b.addEventListener('click', () => {
+    setLang(b.dataset.bannerLang);
+    update({ ...state, lang: getLang() });
+  }),
+);
 
 // ---------- actions ----------
 
@@ -94,7 +183,7 @@ function applyTargetEditor() {
   const input = readMinSec('target-min', 'target-sec');
   if (input.error) return void ($('target-error').textContent = input.error);
   if (input.empty || input.value < MIN_TARGET_SEC) {
-    $('target-error').textContent = 'Enter at least 1 second, or choose No target.';
+    $('target-error').textContent = t('targetErrMin');
     return;
   }
   draftTargets[contextId()] = input.value;
@@ -141,33 +230,44 @@ function currentTarget() {
 
 // One main, plain-language explanation per kind of suggestion.
 // Never "the dog can …" – the journal can't establish that.
-const EXPLANATION = {
-  [KINDS.RAISE]: 'Several calm sessions on different days — small increase.',
-  [KINDS.REPEAT]: 'Keep this time until it feels stable.',
-  [KINDS.LIMITED]: (sec) =>
-    sec == null
-      ? 'Limited basis — choose a short time. One session counts once more sessions confirm it.'
-      : `Limited basis — repeat ${formatTarget(sec)}.`,
-  [KINDS.EASIER]: 'The last session was hard — shorter suggestion.',
-  [KINDS.HARD_CHOOSE]: 'The last session was hard — choose a short, easy time.',
-  [KINDS.WORRIED_AT_ONCE]: 'Worry from the start. Choose an easier step before the next absence.',
-  [KINDS.BREAK]: "It's been a while. Choose a short time that feels easy today.",
-  [KINDS.TOO_LITTLE]: 'Too little usable recent history — choose a short, easy time.',
-  [KINDS.NONE]: 'No sessions logged here yet — choose a short, easy time.',
-};
+function explanation(kind, sec) {
+  switch (kind) {
+    case KINDS.RAISE: return t('explainRaise');
+    case KINDS.REPEAT: return t('explainRepeat');
+    case KINDS.LIMITED: return sec == null ? t('explainLimitedNone') : t('explainLimited', { time: formatTarget(sec) });
+    case KINDS.EASIER: return t('explainEasier');
+    case KINDS.HARD_CHOOSE: return t('explainHardChoose');
+    case KINDS.WORRIED_AT_ONCE: return t('explainWorried');
+    case KINDS.BREAK: return t('explainBreak');
+    case KINDS.TOO_LITTLE: return t('explainTooLittle');
+    case KINDS.NONE: return t('explainNone');
+    default: return '';
+  }
+}
 
 $('end-btn').addEventListener('click', () => {
   update(endSession(state, Date.now()));
 });
 
-$('good-btn').addEventListener('click', () => update(recordResult(state, RESULTS.GOOD)));
+// The comment typed on the result screen is kept with the pending session (survives a reload)
+// and saved together with whichever result is chosen. Saving without a comment is fine.
+$('result-comment').addEventListener('input', () => {
+  state = setPendingComment(state, $('result-comment').value);
+  saveState(state);
+});
+
+$('good-btn').addEventListener('click', () => update(recordResult(syncPendingComment(), RESULTS.GOOD)));
 $('bad-btn').addEventListener('click', () => {
   // Saved right away, so nothing is lost; the follow-up question is optional.
-  const next = recordResult(state, RESULTS.BAD);
+  const next = recordResult(syncPendingComment(), RESULTS.BAD);
   onsetFor = next.sessions[next.sessions.length - 1]?.id ?? null;
   clearOnsetInputs();
   update(next);
 });
+
+function syncPendingComment() {
+  return setPendingComment(state, $('result-comment').value);
+}
 
 // ---------- optional follow-up: when did worry start? ----------
 
@@ -180,7 +280,7 @@ const readMinSec = (minId, secId) => {
   const m = Number(mRaw || 0);
   const sec = Number(sRaw || 0);
   if (!Number.isInteger(m) || !Number.isInteger(sec) || m < 0 || sec < 0 || sec > 59) {
-    return { error: 'Use whole minutes and 0–59 seconds.' };
+    return { error: t('timeErrFormat') };
   }
   return { value: m * 60 + sec };
 };
@@ -205,7 +305,7 @@ $('onset-save').addEventListener('click', () => {
     return render();
   }
   if (!isValidOnset(input.value, session.durationSec)) {
-    $('onset-error').textContent = `That's longer than the session (${formatTarget(session.durationSec)}).`;
+    $('onset-error').textContent = t('onsetTooLong', { time: formatTarget(session.durationSec) });
     return;
   }
   onsetFor = null;
@@ -228,8 +328,23 @@ function showBarDetail(bar) {
 // ---------- rendering ----------
 
 let tick = null;
+let lastMode = null;
 
 function render() {
+  if (appliedLang !== getLang()) applyStaticText();
+
+  // First start: only the welcome screen.
+  const welcome = !state.onboarded;
+  $('welcome').hidden = !welcome;
+  $('app').hidden = welcome;
+  document.body.dataset.welcome = String(welcome);
+  if (welcome) {
+    for (const b of document.querySelectorAll('[data-welcome-lang]')) {
+      b.setAttribute('aria-pressed', String(b.dataset.welcomeLang === welcomeLang));
+    }
+    return;
+  }
+
   const mode = state.active ? 'training' : state.pending ? 'result' : 'ready';
   if (mode !== 'ready' || !state.sessions.some((x) => x.id === onsetFor)) onsetFor = null;
   const askOnset = mode === 'ready' && onsetFor != null;
@@ -237,35 +352,39 @@ function render() {
   $('view-ready').hidden = mode !== 'ready' || askOnset;
   $('view-training').hidden = mode !== 'training';
   $('view-result').hidden = mode !== 'result';
+  $('lang-banner').hidden = !(state.lang == null && mode === 'ready' && !askOnset);
   document.body.dataset.mode = mode;
 
-  $('dog-name').textContent = state.dogs[0].name;
+  $('dog-name').textContent = dogName();
   const ctxName = contextName(contextId());
-  for (const id of ['context-name', 'progress-context', 'history-context', 'empty-context']) {
-    $(id).textContent = ctxName;
-  }
+  for (const id of ['context-name', 'progress-context', 'history-context']) $(id).textContent = ctxName;
+  $('empty').textContent = t('empty', { place: ctxName });
 
   clearInterval(tick);
   if (mode === 'ready') renderReady();
   if (askOnset) {
     const s = state.sessions.find((x) => x.id === onsetFor);
-    $('onset-duration').textContent = formatDuration(s.durationSec);
-    $('onset-dog').textContent = state.dogs[0].name;
+    $('onset-saved').textContent = t('onsetSaved', { dur: formatDuration(s.durationSec) });
+    $('onset-question').textContent = t('onsetQuestion', { dog: dogName() });
   }
   if (mode === 'training') {
+    $('training-label').textContent = t('trainingLabel', { dog: dogName() });
     renderTimer();
     tick = setInterval(renderTimer, 250);
   }
   if (mode === 'result') {
     $('result-duration').textContent = formatDuration(state.pending.durationSec);
     $('result-target').textContent = state.pending.targetSec
-      ? ` · target ${formatTarget(state.pending.targetSec)}`
+      ? t('resultTargetSuffix', { time: formatTarget(state.pending.targetSec) })
       : '';
+    // Fill the comment box when the result screen appears (e.g. after a reload).
+    if (lastMode !== 'result') $('result-comment').value = state.pending.comment ?? '';
   }
+  lastMode = mode;
 
   renderProgress();
   renderData();
-  renderPlaceNames();
+  renderSettingsInfo();
 }
 
 // Place buttons are built with textContent: names are the user's own text.
@@ -290,28 +409,25 @@ function fillPlaceButtons(container, selectedId) {
   });
 }
 
-function listNames(names) {
-  return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+function renderSettingsInfo() {
+  $('help-calc-1').innerHTML = tHtml('helpCalc1', { places: listNames(state.contexts.map((c) => c.name)) });
+  if (!$('settings-details').open) fillSettingsForm();
 }
 
-function renderPlaceNames() {
-  $('help-places').textContent = listNames(state.contexts.map((c) => c.name));
-  if (!$('places-details').open) fillPlaceForm();
-}
+// ---------- settings: dog name, language, place names ----------
 
-// ---------- renaming places ----------
-
-function fillPlaceForm() {
+function fillSettingsForm() {
+  $('settings-dog').value = dogName();
+  for (const r of document.querySelectorAll('input[name="settings-lang"]')) r.checked = r.value === getLang();
   const box = $('places-fields');
   if (!box.children.length) {
     box.replaceChildren(
-      ...state.contexts.map((c, i) => {
+      ...state.contexts.map((c) => {
         const label = document.createElement('label');
         label.className = 'place-field';
         const title = document.createElement('span');
         title.className = 'place-field-label';
-        title.textContent = `Place ${i + 1}`;
-        const original = DEFAULT_CONTEXTS.find((d) => d.id === c.id)?.name;
+        title.dataset.placeIndex = String(state.contexts.indexOf(c) + 1);
         const input = document.createElement('input');
         input.type = 'text';
         input.id = `place-name-${c.id}`;
@@ -320,54 +436,55 @@ function fillPlaceForm() {
         input.autocomplete = 'off';
         input.spellcheck = false;
         input.setAttribute('enterkeyhint', 'done');
-        const hint = document.createElement('span');
-        hint.className = 'place-field-hint';
-        hint.textContent = `Originally “${original}”`;
-        label.append(title, input, hint);
+        label.append(title, input);
         return label;
       }),
     );
   }
+  for (const el of box.querySelectorAll('[data-place-index]')) el.textContent = t('placeN', { n: el.dataset.placeIndex });
   for (const c of state.contexts) $(`place-name-${c.id}`).value = c.name;
-  $('places-error').textContent = '';
-}
-
-function readPlaceForm() {
-  return Object.fromEntries(state.contexts.map((c) => [c.id, $(`place-name-${c.id}`).value]));
+  $('settings-error').textContent = '';
 }
 
 // Fill the form synchronously when opening. (The "toggle" event fires later and could
 // overwrite what the user has already started typing.)
-$('places-details').querySelector('summary').addEventListener('click', () => {
-  if (!$('places-details').open) {
-    fillPlaceForm();
-    $('places-status').textContent = '';
+$('settings-details').querySelector('summary').addEventListener('click', () => {
+  if (!$('settings-details').open) {
+    fillSettingsForm();
+    $('settings-status').textContent = '';
   }
 });
 
-$('places-form').addEventListener('submit', (e) => {
+$('settings-form').addEventListener('submit', (e) => {
   e.preventDefault();
-  const names = readPlaceForm();
-  const error = validateContextNames(state, names);
-  if (error) {
-    $('places-error').textContent = error;
-    return;
-  }
-  const next = renameContexts(state, names);
-  const changed = next.contexts.some((c, i) => c.name !== state.contexts[i].name);
+  const dogErr = validateDogName($('settings-dog').value);
+  if (dogErr) return void ($('settings-error').textContent = dogError(dogErr));
+  const names = Object.fromEntries(state.contexts.map((c) => [c.id, $(`place-name-${c.id}`).value]));
+  const placeErr = validateContextNames(state, names);
+  if (placeErr) return void ($('settings-error').textContent = placeError(placeErr));
+  const lang = document.querySelector('input[name="settings-lang"]:checked')?.value ?? getLang();
+
+  // Only labels and the interface language change. Ids, sessions and suggestions stay.
+  // A language switch never renames places – the names are the user's own text.
+  let next = renameContexts(renameDog(state, $('settings-dog').value), names);
+  if (LANGS.includes(lang) && (lang !== state.lang)) next = { ...next, lang };
+  const changed = JSON.stringify([next.dogs, next.contexts, next.lang]) !== JSON.stringify([state.dogs, state.contexts, state.lang]);
+  setLang(next.lang ?? getLang());
   update(next);
-  fillPlaceForm();
-  $('places-details').open = false;
-  $('places-status').textContent = changed ? 'Place names saved.' : 'No changes.';
+  $('settings-details').open = false;
+  fillSettingsForm();
+  $('settings-status').textContent = changed ? t('settingsSaved') : t('settingsNoChanges');
 });
 
-$('places-cancel').addEventListener('click', () => {
-  fillPlaceForm();
-  $('places-details').open = false;
-  $('places-status').textContent = '';
+$('settings-cancel').addEventListener('click', () => {
+  fillSettingsForm();
+  $('settings-details').open = false;
+  $('settings-status').textContent = '';
 });
 
-$('places-form').addEventListener('input', () => ($('places-error').textContent = ''));
+$('settings-form').addEventListener('input', () => ($('settings-error').textContent = ''));
+
+// ---------- ready screen ----------
 
 function renderReady() {
   fillPlaceButtons($('context-picker'), state.selectedContextId);
@@ -376,43 +493,40 @@ function renderReady() {
   const isSuggested = suggested != null && value === suggested;
 
   $('target-label').textContent = isSuggested
-    ? 'Suggestion today'
+    ? t('targetSuggestion')
     : value == null
       ? suggested == null
-        ? 'Choose a starting time'
-        : 'No target'
-      : 'Your target';
-  $('target-value').textContent = value == null ? 'No target' : formatTarget(value);
+        ? t('targetChoose')
+        : t('targetNone')
+      : t('targetYours');
+  $('target-value').textContent = value == null ? t('targetNone') : formatTarget(value);
   $('target-value').setAttribute(
     'aria-label',
-    `${value == null ? 'No target' : `Target ${formatTarget(value)}`}. Tap to type a time.`,
+    t('targetAria', { value: value == null ? t('targetNone') : t('targetAriaValue', { time: formatTarget(value) }) }),
   );
   $('target-value').classList.toggle('none', value == null);
   $('target-down').disabled = value == null || value <= MIN_TARGET_SEC;
   $('target-edit').hidden = !targetEditorOpen;
 
-  const explain = EXPLANATION[suggestion.kind];
-  $('target-basis').textContent = typeof explain === 'function' ? explain(suggestion.sec) : explain ?? '';
+  $('target-basis').textContent = explanation(suggestion.kind, suggestion.sec);
   $('target-basis').dataset.kind = suggestion.kind;
 
   // Earlier stable level: history only, shown when it is above today's suggestion.
   const earlier = suggestion.earlierLevel;
   const showEarlier = earlier != null && (suggested == null || earlier > suggested);
   $('earlier-level').hidden = !showEarlier;
-  $('earlier-level').textContent = showEarlier
-    ? `Earlier stable level: ${formatTarget(earlier)} (history, not today's target)`
-    : '';
+  $('earlier-level').textContent = showEarlier ? t('earlierLevel', { time: formatTarget(earlier) }) : '';
 
   const chips = [];
   if (suggested != null && value !== suggested) {
-    chips.push(['suggested', `Use suggestion ${formatTarget(suggested)}`]);
+    chips.push(['suggested', t('chipUseSuggestion', { time: formatTarget(suggested) })]);
   }
   if (repeat != null && value !== repeat && repeat !== suggested) {
-    chips.push([repeat, `Repeat ${formatTarget(repeat)}`]);
+    chips.push([repeat, t('chipRepeat', { time: formatTarget(repeat) })]);
   }
-  if (value != null) chips.push(['none', 'No target']);
+  if (value != null) chips.push(['none', t('targetNone')]);
   $('target-chips').innerHTML = chips
-    .map(([v, label]) => `<button type="button" class="chip" data-target="${v}">${label}</button>`)
+    .map(([v, label]) => `<button type="button" class="chip" data-target="${v}">${escapeHtml(label)}</button>`)
     .join('');
 }
 
@@ -424,7 +538,7 @@ function renderTimer() {
   line.hidden = !target;
   if (target) {
     const reached = elapsed >= target;
-    line.textContent = `Target ${formatTarget(target)}${reached ? ' reached' : ''}`;
+    line.textContent = t(reached ? 'trainingReached' : 'trainingTarget', { time: formatTarget(target) });
     line.classList.toggle('reached', reached);
   }
 }
@@ -437,8 +551,8 @@ function renderProgress() {
   const hiddenBars = sessions.length - MAX_BARS;
   $('chart-note').hidden = hiddenBars <= 0;
   $('chart-note').textContent =
-    hiddenBars > 0 ? `Showing the latest ${MAX_BARS} of ${sessions.length} sessions.` : '';
-  $('chart-detail').textContent = hasData ? 'Tap a bar to see details.' : '';
+    hiddenBars > 0 ? t('chartNote', { shown: MAX_BARS, total: sessions.length }) : '';
+  $('chart-detail').textContent = hasData ? t('chartTap') : '';
   $('empty').hidden = hasData;
   document.querySelector('#progress .legend').hidden = !hasData;
   $('legend-target').hidden = !sessions.slice(-MAX_BARS).some((s) => s.targetSec);
@@ -449,28 +563,34 @@ function renderProgress() {
   const visible = showAll ? newestFirst : newestFirst.slice(0, HISTORY_PREVIEW);
   const more = $('history-more');
   more.hidden = sessions.length <= HISTORY_PREVIEW;
-  more.textContent = showAll ? 'Show fewer' : `Show all (${sessions.length})`;
+  more.textContent = showAll ? t('historyShowFewer') : t('historyShowAll', { n: sessions.length });
   const editable = !state.active && !state.pending;
 
+  // Everything below goes into HTML, so every piece of text is escaped.
   $('history').innerHTML = visible
     .map((s) => {
-      const when = new Date(s.startedAt).toLocaleString(undefined, {
+      const when = new Date(s.startedAt).toLocaleString(locale(), {
         weekday: 'short',
         day: 'numeric',
         month: 'short',
         hour: '2-digit',
         minute: '2-digit',
       });
+      const aria = t('historyRowAria', {
+        when,
+        dur: formatDuration(s.durationSec),
+        target: s.targetSec ? t('historyRowAriaTarget', { time: formatTarget(s.targetSec) }) : '',
+        result: resultText(s),
+      }) + (s.comment ? t('historyRowAriaComment', { comment: s.comment }) : '');
       return `
       <li>
-        <button type="button" class="row" data-id="${s.id}" ${editable ? '' : 'disabled'}
-          aria-label="Edit session: ${when}, ${formatDuration(s.durationSec)}${
-            s.targetSec ? `, target ${formatTarget(s.targetSec)}` : ''
-          }, ${resultText(s).toLowerCase()}">
-          <span class="when">${when}</span>
-          <span class="dur">${formatDuration(s.durationSec)}</span>
-          ${s.targetSec ? `<span class="planned">target ${formatTarget(s.targetSec)}</span>` : ''}
-          <span class="tag ${s.result}"><i class="swatch ${s.result}"></i>${resultText(s)}</span>
+        <button type="button" class="row" data-id="${escapeHtml(s.id)}" ${editable ? '' : 'disabled'}
+          aria-label="${escapeHtml(aria)}">
+          <span class="when">${escapeHtml(when)}</span>
+          <span class="dur">${escapeHtml(formatDuration(s.durationSec))}</span>
+          ${s.targetSec ? `<span class="planned">${escapeHtml(t('historyTarget', { time: formatTarget(s.targetSec) }))}</span>` : ''}
+          <span class="tag ${s.result}"><i class="swatch ${s.result}"></i>${escapeHtml(resultText(s))}</span>
+          ${s.comment ? `<span class="note">${escapeHtml(s.comment)}</span>` : ''}
         </button>
       </li>`;
     })
@@ -479,12 +599,10 @@ function renderProgress() {
 
 function renderData() {
   $('last-backup').textContent = state.lastBackupAt
-    ? `Last backup: ${new Date(state.lastBackupAt).toLocaleDateString(undefined, {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })}.`
-    : 'No backup saved yet.';
+    ? t('dataLast', {
+        date: new Date(state.lastBackupAt).toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' }),
+      })
+    : t('dataNever');
 }
 
 // ---------- history: show all ----------
@@ -513,7 +631,7 @@ function openEditor(id) {
   if (!s || state.active || state.pending) return;
   editing = { id, result: s.result, contextId: s.contextId };
   deleteArmed = false;
-  $('edit-when').textContent = new Date(s.startedAt).toLocaleString(undefined, {
+  $('edit-when').textContent = new Date(s.startedAt).toLocaleString(locale(), {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
@@ -529,6 +647,7 @@ function openEditor(id) {
   $('edit-onset-min').value = hasOnset ? Math.floor(s.anxietyOnsetSec / 60) : '';
   $('edit-onset-sec').value = hasOnset ? s.anxietyOnsetSec % 60 : '';
   $('edit-uncertain').checked = s.uncertain === true;
+  $('edit-comment').value = s.comment ?? '';
   $('edit-error').textContent = '';
   renderEditor();
   dialog.showModal();
@@ -541,7 +660,7 @@ function renderEditor() {
   }
   $('edit-onset-field').hidden = editing.result !== RESULTS.BAD;
   $('edit-uncertain-field').hidden = editing.result !== RESULTS.GOOD;
-  $('edit-delete').textContent = deleteArmed ? 'Tap again to delete' : 'Delete session';
+  $('edit-delete').textContent = deleteArmed ? t('editDeleteConfirm') : t('editDelete');
   $('edit-delete').classList.toggle('armed', deleteArmed);
 }
 
@@ -574,12 +693,13 @@ $('edit-form').addEventListener('submit', (e) => {
     contextId: editing.contextId,
     durationSec,
     targetSec: targetSec || null,
+    comment: $('edit-comment').value, // empty = removed
   };
   if (editing.result === RESULTS.BAD) {
     const onset = readMinSec('edit-onset-min', 'edit-onset-sec');
     if (onset.error) return void ($('edit-error').textContent = onset.error);
     if (!onset.empty && !isValidOnset(onset.value, durationSec)) {
-      $('edit-error').textContent = 'Worry can\'t start after the session ended.';
+      $('edit-error').textContent = t('editWorryAfterEnd');
       return;
     }
     changes.anxietyOnsetSec = onset.empty ? null : onset.value;
@@ -637,13 +757,13 @@ $('backup-btn').addEventListener('click', async () => {
   const done = await shareOrDownload(buildBackup(state), backupFileName('json'), 'application/json');
   if (done) {
     update({ ...state, lastBackupAt: Date.now() });
-    status(`Backup saved (${state.sessions.length} sessions).`);
+    status(t('dataSaved', { n: state.sessions.length }));
   }
 });
 
 $('csv-btn').addEventListener('click', async () => {
   if (await shareOrDownload(buildCsv(state), backupFileName('csv'), 'text/csv')) {
-    status('Excel file created.');
+    status(t('dataCsvDone'));
   }
 });
 
@@ -651,55 +771,72 @@ $('restore-input').addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
   e.target.value = '';
   if (!file) return;
-  status('Reading backup…');
+  status(t('dataReading'));
   try {
-    const { sessions, contextNames } = parseBackup(await file.text());
+    const parsed = parseBackup(await file.text());
     try {
       localStorage.setItem(`alone-training:before-restore-${Date.now()}`, JSON.stringify(state));
     } catch {}
-    const { state: merged, added, skipped } = mergeSessions(state, sessions);
+    const { state: merged, added, skipped } = mergeSessions(state, parsed.sessions);
     update(merged);
     status(
       added
-        ? `Restored ${added} session${added === 1 ? '' : 's'}.${skipped ? ` ${skipped} were already here.` : ''}`
-        : 'Nothing new in that backup – all its sessions are already here.',
+        ? (added === 1 ? t('dataRestoredOne') : t('dataRestoredMany', { n: added })) +
+            (skipped ? t('dataSkipped', { n: skipped }) : '')
+        : t('dataNothingNew'),
     );
-    offerBackupNames(contextNames);
+    offerBackupSettings(parsed);
   } catch (err) {
-    status(err.message || 'Could not read that file.');
+    status(err?.code === 'not-backup' ? t('dataNotBackup') : t('dataReadError'));
   }
 });
 
-// Restoring never changes place names by itself. If the backup has different names,
-// show them and let the user choose. Backups without names change nothing.
-let pendingBackupNames = null;
+// Restoring never changes dog name, language or place names by itself. If the backup
+// has other values, show them and let the user choose. Backups without them change nothing.
+let pendingBackup = null;
 
-function offerBackupNames(contextNames) {
-  const changes = nameChanges(state, contextNames);
-  pendingBackupNames = changes.length ? contextNames : null;
+function offerBackupSettings(parsed) {
+  const changes = settingsChanges(state, parsed);
+  pendingBackup = changes.length ? parsed : null;
   $('restore-names').hidden = !changes.length;
   $('restore-names-text').textContent = changes.length
-    ? `The backup uses other place names: ${changes
-        .map((c) => `“${c.fromBackup}” instead of “${c.current}”`)
-        .join(', ')}. Your current names were kept.`
+    ? t('restoreDiffers', {
+        list: changes
+          .map((c) =>
+            c.kind === 'dog'
+              ? t('restoreItemDog', { from: c.fromBackup, current: c.current })
+              : c.kind === 'lang'
+                ? t('restoreItemLang', { from: LANG_NAMES[c.fromBackup], current: LANG_NAMES[c.current] })
+                : t('restoreItemPlace', { from: c.fromBackup, current: c.current }),
+          )
+          .join(', '),
+      })
     : '';
 }
 
 $('restore-names-apply').addEventListener('click', () => {
-  if (pendingBackupNames) update(renameContexts(state, pendingBackupNames));
-  offerBackupNames(null);
-  status('Place names from the backup are now used.');
+  if (pendingBackup) {
+    let next = state;
+    if (pendingBackup.dogName) next = renameDog(next, pendingBackup.dogName);
+    if (pendingBackup.contextNames) next = renameContexts(next, pendingBackup.contextNames);
+    if (pendingBackup.lang && state.lang) next = { ...next, lang: pendingBackup.lang };
+    setLang(next.lang ?? getLang());
+    update(next);
+  }
+  offerBackupSettings(null);
+  status(t('restoreApplied'));
 });
 
 $('restore-names-keep').addEventListener('click', () => {
-  offerBackupNames(null);
-  status('Your place names were kept.');
+  offerBackupSettings(null);
+  status(t('restoreKept'));
 });
 
 // Timer catches up instantly when you come back to the app.
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) {
     state = loadState();
+    if (state.lang) setLang(state.lang);
     render();
   }
 });
@@ -713,3 +850,6 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 // Clear an error message as soon as the user corrects the value.
 $('edit-form').addEventListener('input', () => ($('edit-error').textContent = ''));
 $('view-onset').addEventListener('input', () => ($('onset-error').textContent = ''));
+
+// Comments: never more than MAX_COMMENT characters (also enforced when saving).
+for (const id of ['result-comment', 'edit-comment']) $(id).maxLength = MAX_COMMENT;

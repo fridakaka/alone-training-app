@@ -5,7 +5,10 @@
 // v0.2 saves under a NEW key. The v0.1 key is only ever read, never written or
 // deleted, so the original data always stays on the phone as a backup.
 
-import { createInitialState, DEFAULT_CONTEXTS, SCHEMA_VERSION, cleanContextName, MAX_CONTEXT_NAME } from './training.js';
+import {
+  createInitialState, DEFAULT_CONTEXTS, SCHEMA_VERSION, cleanContextName, MAX_CONTEXT_NAME, MAX_DOG_NAME,
+} from './training.js';
+import { LANGS } from './i18n.js';
 
 export const KEY = 'alone-training:v2';
 export const V1_KEY = 'alone-training:v1';
@@ -54,6 +57,7 @@ export function migrateFromV1(storage = globalThis.localStorage) {
   const toV2 = (s) => (s ? { ...s, contextId: s.contextId || 'home', targetSec: s.targetSec ?? null } : null);
   return normalizeV2({
     ...fresh,
+    onboarded: true, // an existing v0.1 user: no welcome screen
     dogs: Array.isArray(old.dogs) && old.dogs.length ? old.dogs : fresh.dogs,
     sessions: old.sessions.map(toV2),
     active: toV2(old.active),
@@ -72,7 +76,20 @@ function normalizeV2(data) {
     const name = typeof raw === 'string' ? cleanContextName(raw) : '';
     return { ...c, name: name && [...name].length <= MAX_CONTEXT_NAME ? name : c.name };
   });
-  const state = { ...fresh, ...data, schemaVersion: SCHEMA_VERSION, contexts };
+  // One dog. Keep its id; fall back to the default name only if the stored one is unusable.
+  const savedDog = Array.isArray(data.dogs) && data.dogs[0] ? data.dogs[0] : fresh.dogs[0];
+  const dogName = typeof savedDog.name === 'string' ? cleanContextName(savedDog.name) : '';
+  const dogs = [{ ...savedDog, id: savedDog.id || 'charlie', name: dogName && [...dogName].length <= MAX_DOG_NAME ? dogName : fresh.dogs[0].name }];
+  const state = {
+    ...fresh,
+    ...data,
+    schemaVersion: SCHEMA_VERSION,
+    contexts,
+    dogs,
+    // Data saved before these fields existed belongs to an existing user.
+    onboarded: data.onboarded === false ? false : true,
+    lang: LANGS.includes(data.lang) ? data.lang : null,
+  };
   if (!contexts.some((c) => c.id === state.selectedContextId)) state.selectedContextId = 'home';
   return state;
 }

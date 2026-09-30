@@ -17,6 +17,8 @@ export function createInitialState() {
     dogs: [{ id: 'charlie', name: 'Charlie' }],
     contexts: DEFAULT_CONTEXTS.map((c) => ({ ...c })),
     selectedContextId: 'home', // last chosen context, remembered between visits
+    lang: null, // 'en' | 'sv'; null = not chosen yet (existing users are shown a small choice)
+    onboarded: false, // new users see the short welcome once; loaded older data counts as onboarded
     active: null, // session currently running
     pending: null, // session ended but not yet rated
     lastBackupAt: null, // when a backup file was last saved
@@ -34,17 +36,62 @@ export function cleanContextName(name) {
   return String(name ?? '').normalize('NFC').trim();
 }
 
-// Returns an error message, or null when the names can be saved.
+// Returns an error code ('empty' | 'tooLong' | 'duplicate'), or null when the names can be saved.
 // `names` is { [contextId]: name } and must cover every existing context.
 export function validateContextNames(state, names) {
   const cleaned = state.contexts.map((c) => cleanContextName(names[c.id]));
-  if (cleaned.some((n) => n === '')) return 'Every place needs a name.';
-  if (cleaned.some((n) => [...n].length > MAX_CONTEXT_NAME)) {
-    return `Names can be at most ${MAX_CONTEXT_NAME} characters.`;
-  }
+  if (cleaned.some((n) => n === '')) return 'empty';
+  if (cleaned.some((n) => [...n].length > MAX_CONTEXT_NAME)) return 'tooLong';
   const keys = cleaned.map((n) => n.toLocaleLowerCase('sv'));
-  if (new Set(keys).size !== keys.length) return 'Two places can\'t have the same name.';
+  if (new Set(keys).size !== keys.length) return 'duplicate';
   return null;
+}
+
+// ---------- dog name ----------
+// Still exactly one dog. Its id ('charlie' for existing data) never changes; only the
+// display name does, so sessions (which point to dogId) are never touched.
+
+export const MAX_DOG_NAME = 30;
+
+// Error code ('empty' | 'tooLong') or null.
+export function validateDogName(name) {
+  const n = cleanContextName(name);
+  if (!n) return 'empty';
+  if ([...n].length > MAX_DOG_NAME) return 'tooLong';
+  return null;
+}
+
+export function renameDog(state, name) {
+  if (validateDogName(name)) return state;
+  return { ...state, dogs: state.dogs.map((d, i) => (i === 0 ? { ...d, name: cleanContextName(name) } : d)) };
+}
+
+// ---------- comments ----------
+// Free journal text. Never read by the suggestion model.
+
+export const MAX_COMMENT = 500;
+
+// Trimmed, NFC, line breaks as \n, at most MAX_COMMENT characters; '' → null.
+export function cleanComment(text) {
+  if (typeof text !== 'string') return null;
+  const s = text.normalize('NFC').replace(/\r\n?/g, '\n').trim();
+  if (!s) return null;
+  return [...s].slice(0, MAX_COMMENT).join('');
+}
+
+// While the result screen is open, the typed comment is kept with the pending session,
+// so it survives a reload and is saved together with the result.
+export function setPendingComment(state, text) {
+  if (!state.pending) return state;
+  return { ...state, pending: { ...state.pending, comment: cleanComment(text) } };
+}
+
+// ---------- first start ----------
+
+export function completeOnboarding(state, { lang, dogName, placeNames }) {
+  let next = renameDog({ ...state, lang, onboarded: true }, dogName);
+  if (placeNames) next = renameContexts(next, placeNames);
+  return next;
 }
 
 // Only the labels change. Returns the same state unchanged if the names are invalid.
@@ -121,6 +168,7 @@ export function updateSession(state, id, changes) {
   if ('targetSec' in changes) patch.targetSec = normalizeTarget(changes.targetSec);
   if (state.contexts.some((c) => c.id === changes.contextId)) patch.contextId = changes.contextId;
   if ('uncertain' in changes) patch.uncertain = changes.uncertain === true;
+  if ('comment' in changes) patch.comment = cleanComment(changes.comment);
   return {
     ...state,
     sessions: state.sessions.map((s) => {

@@ -1,7 +1,10 @@
 // Backup, restore and Excel export. Pure functions: no DOM, no storage.
 // Restoring MERGES: sessions already on the phone are never removed or changed.
 
-import { RESULTS, DEFAULT_CONTEXTS, cleanContextName, validateContextNames } from './training.js';
+import {
+  RESULTS, DEFAULT_CONTEXTS, cleanContextName, validateContextNames, validateDogName, cleanComment,
+} from './training.js';
+import { LANGS } from './i18n.js';
 
 export const BACKUP_APP = 'alone-time';
 
@@ -12,6 +15,7 @@ export function buildBackup(state, now = Date.now()) {
       exportedAt: new Date(now).toISOString(),
       schemaVersion: state.schemaVersion,
       dogs: state.dogs,
+      lang: state.lang ?? null,
       contexts: state.contexts,
       sessions: state.sessions,
     },
@@ -29,10 +33,10 @@ export function parseBackup(text) {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error("This file isn't a backup from this app.");
+    throw notBackup();
   }
   if (!data || !Array.isArray(data.sessions)) {
-    throw new Error("This file isn't a backup from this app.");
+    throw notBackup();
   }
   const sessions = data.sessions.filter(isValidSession).map((s) => ({
     id: String(s.id),
@@ -50,8 +54,38 @@ export function parseBackup(text) {
         ? Math.round(s.anxietyOnsetSec)
         : null,
     uncertain: s.result === RESULTS.GOOD && s.uncertain === true,
+    // Added in v0.7. Missing = no comment.
+    comment: cleanComment(s.comment),
   }));
-  return { sessions, contextNames: readContextNames(data.contexts) };
+  const rawDog = Array.isArray(data.dogs) ? data.dogs[0]?.name : undefined;
+  return {
+    sessions,
+    contextNames: readContextNames(data.contexts),
+    // null when the backup doesn't have it (older backups) – then nothing changes.
+    dogName: typeof rawDog === 'string' && !validateDogName(rawDog) ? cleanContextName(rawDog) : null,
+    lang: LANGS.includes(data.lang) ? data.lang : null,
+  };
+}
+
+function notBackup() {
+  const err = new Error("This file isn't a backup from this app.");
+  err.code = 'not-backup';
+  return err;
+}
+
+// Everything in the backup's settings that differs from the phone:
+// [{ kind: 'dog' | 'lang' | 'place', id?, current, fromBackup }].
+// Missing settings in the backup are never reported and never applied.
+export function settingsChanges(state, parsed) {
+  const out = [];
+  if (parsed?.dogName && parsed.dogName !== state.dogs[0].name) {
+    out.push({ kind: 'dog', current: state.dogs[0].name, fromBackup: parsed.dogName });
+  }
+  if (parsed?.lang && state.lang && parsed.lang !== state.lang) {
+    out.push({ kind: 'lang', current: state.lang, fromBackup: parsed.lang });
+  }
+  for (const c of nameChanges(state, parsed?.contextNames)) out.push({ kind: 'place', ...c });
+  return out;
 }
 
 function readContextNames(contexts) {
@@ -122,17 +156,22 @@ export function buildCsv(state) {
         mmss(s.anxietyOnsetSec),
         s.uncertain ? 'No' : 'Yes',
         s.contextId, // stable id: stays the same when a place is renamed
+        s.comment ?? '',
       ];
     });
   const header = [
     'Date', 'Time', 'Place', 'Actual (s)', 'Actual', 'Target (s)', 'Target', 'Result',
-    'Worried after (s)', 'Worried after', 'Counted for suggestions', 'Place ID',
+    'Worried after (s)', 'Worried after', 'Counted for suggestions', 'Place ID', 'Comment',
   ];
   return ['sep=;', ...[header, ...rows].map((r) => r.map(csvCell).join(';'))].join('\r\n') + '\r\n';
 }
 
+// Text that starts like a formula (= + - @, or tab / CR) is prefixed with ' so that Excel
+// shows it as text instead of running it. Numbers are written as numbers and never start
+// with these characters. Cells with ; " or line breaks are quoted, with "" for quotes.
 function csvCell(v) {
-  const s = String(v);
+  let s = String(v);
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

@@ -12,7 +12,7 @@ test('backup round-trip restores all sessions exactly', () => {
   const state = { ...createInitialState(), sessions: [sess('s1'), sess('s2', { contextId: 'car', targetSec: 120, result: 'bad' })] };
   const { sessions } = parseBackup(buildBackup(state));
   // Older sessions get the v0.4 fields as "unknown" / "counted" – nothing else changes.
-  assert.deepEqual(sessions, state.sessions.map((s) => ({ ...s, anxietyOnsetSec: null, uncertain: false })));
+  assert.deepEqual(sessions, state.sessions.map((s) => ({ ...s, anxietyOnsetSec: null, uncertain: false, comment: null })));
 });
 
 test('backup keeps time until worry and "don\'t count"', () => {
@@ -82,14 +82,14 @@ test('Excel export has one row per session, oldest first, semicolon separated', 
   const state = { ...createInitialState(), sessions: [sess('s2', { contextId: 'outside-shop', targetSec: 120, result: 'bad' }), sess('s1')] };
   const lines = buildCsv(state).trim().split('\r\n');
   assert.equal(lines[0], 'sep=;');
-  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions;Place ID');
+  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions;Place ID;Comment');
   assert.equal(lines.length, 4);
-  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well;;;Yes;home$/);
-  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;Yes;outside-shop$/);
+  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well;;;Yes;home;$/);
+  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;Yes;outside-shop;$/);
   const withNew = { ...state, sessions: [sess('s3', { result: 'bad', anxietyOnsetSec: 45 }), sess('s4', { uncertain: true })] };
   const [, , a, b] = buildCsv(withNew).trim().split('\r\n');
-  assert.match(a, /;Didn't go well;45;0:45;Yes;home$/);
-  assert.match(b, /;Went well;;;No;home$/);
+  assert.match(a, /;Didn't go well;45;0:45;Yes;home;$/);
+  assert.match(b, /;Went well;;;No;home;$/);
 });
 
 test('backup file name contains the date', () => {
@@ -106,7 +106,7 @@ test('Excel export uses the names shown in the app, plus the stable place ID', (
   const state = renameContexts({ ...createInitialState(), sessions: [sess('s1', { contextId: 'car' })] }, RENAMED);
   const [, , row] = buildCsv(state).trim().split('\r\n');
   assert.match(row, /;Bilburen;90;1:30;/);
-  assert.match(row, /;car$/);
+  assert.match(row, /;car;$/);
 });
 
 test('new backups contain the place names, and restore reads them back', () => {
@@ -142,4 +142,59 @@ test('backups with incomplete or invalid names are treated as having no names', 
   assert.equal(parseBackup(partial).contextNames, null);
   const dup = JSON.stringify({ contexts: [{ id: 'home', name: 'A' }, { id: 'car', name: 'a' }, { id: 'outside-shop', name: 'B' }], sessions: [] });
   assert.deepEqual(nameChanges(createInitialState(), parseBackup(dup).contextNames), []);
+});
+
+// ---------- v0.7: comments, dog name, language ----------
+import { renameDog } from '../../src/training.js';
+import { settingsChanges } from '../../src/backup.js';
+
+test('comments survive backup and restore; old backups have none', () => {
+  const text = 'Grannhunden skällde.\nHan lade sig efter en stund – "lugn" ; å ä ö';
+  const state = { ...createInitialState(), sessions: [sess('s1', { comment: text })] };
+  const { sessions } = parseBackup(buildBackup(state));
+  assert.equal(sessions[0].comment, text);
+  assert.equal(parseBackup(JSON.stringify({ sessions: [sess('s1')] })).sessions[0].comment, null);
+  // Invalid comment values are dropped, long ones cut to the limit.
+  const odd = parseBackup(JSON.stringify({ sessions: [sess('s1', { comment: 42 }), sess('s2', { comment: 'x'.repeat(900) })] }));
+  assert.equal(odd.sessions[0].comment, null);
+  assert.equal(odd.sessions[1].comment.length, 500);
+});
+
+test('Excel: comment column with Swedish letters, quotes, ; and line breaks escaped', () => {
+  const state = { ...createInitialState(), sessions: [sess('s1', { comment: 'Rad 1\nRad "två"; åäö' })] };
+  const csv = buildCsv(state);
+  assert.ok(csv.includes(';home;"Rad 1\nRad ""två""; åäö"\r\n'));
+});
+
+test('Excel: text that looks like a formula is not run as a formula', () => {
+  for (const bad of ['=HYPERLINK("x")', '+1', '-2+3', '@SUM(A1)']) {
+    const csv = buildCsv({ ...createInitialState(), sessions: [sess('s1', { comment: bad })] });
+    const cell = csv.trim().split('\r\n')[2].split(';home;')[1];
+    assert.ok(/^"?'/.test(cell), `${bad} → ${cell}`);
+  }
+  // Place names are user text too.
+  const renamed = renameContexts({ ...createInitialState(), sessions: [sess('s1')] }, { home: '=Hem', car: 'Car', 'outside-shop': 'Shop' });
+  assert.match(buildCsv(renamed), /;'=Hem;90;/);
+});
+
+test('backup carries dog name and language; restore reports differences but never applies them by itself', () => {
+  const src = { ...renameDog(createInitialState(), 'Majken'), lang: 'sv' };
+  const parsed = parseBackup(buildBackup(src));
+  assert.equal(parsed.dogName, 'Majken');
+  assert.equal(parsed.lang, 'sv');
+  const phone = { ...createInitialState(), lang: 'en' }; // Charlie, English
+  const { state } = mergeSessions(phone, parsed.sessions);
+  assert.equal(state.dogs[0].name, 'Charlie');
+  assert.equal(state.lang, 'en');
+  assert.deepEqual(settingsChanges(phone, parsed).map((c) => c.kind), ['dog', 'lang']);
+});
+
+test('old backups without dog name or language change nothing', () => {
+  const old = parseBackup(JSON.stringify({ sessions: [sess('s1')] }));
+  assert.equal(old.dogName, null);
+  assert.equal(old.lang, null);
+  const phone = { ...renameDog(createInitialState(), 'Majken'), lang: 'sv' };
+  assert.deepEqual(settingsChanges(phone, old), []);
+  // A backup with the default dog name only differs if the names differ.
+  assert.deepEqual(settingsChanges(createInitialState(), parseBackup(buildBackup(createInitialState()))), []);
 });

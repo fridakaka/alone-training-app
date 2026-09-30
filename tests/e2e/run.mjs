@@ -25,12 +25,39 @@ async function step(name, fn) {
   console.log(`  ✓ ${name}`);
 }
 
+// New browser profiles start as new users: complete the short welcome (English, "Charlie")
+// so that the older steps keep testing the same app as before.
+async function gotoApp(p, { lang = 'en', dog = 'Charlie' } = {}) {
+  await p.goto(APP);
+  if (await p.isVisible('#welcome')) {
+    await p.tap(`[data-welcome-lang="${lang}"]`);
+    await p.fill('#welcome-dog', dog);
+    await p.tap('#welcome-start');
+  }
+}
+
 try {
   const ctx = await browser.newContext({ ...phone, serviceWorkers: 'block' });
   const page = await ctx.newPage();
   watch(page);
   await page.clock.install({ time: new Date('2026-09-28T09:00:00') });
   await page.goto(APP);
+
+  await step('first start: short welcome with language and dog name (keyboard works)', async () => {
+    assert.ok(await page.isVisible('#welcome'));
+    assert.ok(await page.isHidden('#app'));
+    assert.equal(await page.textContent('#welcome-title'), 'Welcome to Alone Time');
+    assert.match(await page.textContent('#welcome-intro'), /Every dog is different/);
+    await page.tap('#welcome-start');
+    assert.equal(await page.textContent('#welcome-error'), "Enter your dog's name.");
+    await page.fill('#welcome-dog', 'x'.repeat(31));
+    await page.press('#welcome-dog', 'Enter');
+    assert.equal(await page.textContent('#welcome-error'), "The dog's name can be at most 30 characters.");
+    await page.fill('#welcome-dog', '  Charlie ');
+    await page.press('#welcome-dog', 'Enter');
+    assert.ok(await page.isHidden('#welcome'));
+    assert.ok(await page.isHidden('#lang-banner')); // language already chosen
+  });
 
   await step('first launch shows Charlie · Home, Start button and empty state', async () => {
     assert.equal(await page.textContent('h1'), 'Charlie · Home');
@@ -371,7 +398,7 @@ try {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.tap('#csv-btn')]);
     const csv = await readFile(await dl.path(), 'utf8');
     const lines = csv.trim().split('\r\n');
-    assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions;Place ID');
+    assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions;Place ID;Comment');
     assert.match(csv, /;Didn't go well;20;0:20;Yes/);
     const total = await page.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length);
     assert.equal(lines.length - 2, total);
@@ -383,7 +410,7 @@ try {
     const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
-    await p.goto(APP);
+    await gotoApp(p);
     assert.equal(await p.locator('#history li').count(), 0);
     const restoreStatus = async (file) => {
       await p.setInputFiles('#restore-input', file);
@@ -421,7 +448,7 @@ try {
       }
     }, v1);
     await p.clock.install({ time: new Date('2026-09-22T09:00:00') });
-    await p.goto(APP);
+    await gotoApp(p);
     assert.equal(await p.textContent('h1'), 'Charlie · Home');
     assert.equal(await p.locator('#history li').count(), 2);
     // 3:00 and 4:00 went well on two days → level 3:00 established → +10 % rounded down = 3:15.
@@ -455,7 +482,7 @@ try {
           }));
         }
       });
-      await p.goto(APP);
+      await gotoApp(p);
       assert.equal(await p.locator('.chart .bar').count(), 16);
       assert.equal(await p.locator('#history li').count(), 10);
       assert.equal((await p.textContent('#history-more')).trim(), 'Show all (16)');
@@ -484,7 +511,7 @@ try {
         selectedContextId: 'home', active: null, pending: null, sessions,
       }));
     });
-    await p.goto(APP);
+    await gotoApp(p);
     assert.equal(await p.locator('.chart .bar').count(), 30);
     assert.equal((await p.textContent('#chart-note')).trim(), 'Showing the latest 30 of 35 sessions.');
     assert.equal(await p.locator('#history li').count(), 10);
@@ -501,7 +528,7 @@ try {
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-01T09:00:00') });
-    await p.goto(APP);
+    await gotoApp(p);
     const t = (sel) => p.textContent(sel).then((x) => x.trim());
     assert.equal(await t('#target-value'), 'No target');
     await p.tap('#target-up');
@@ -561,7 +588,7 @@ try {
         selectedContextId: 'home', active: null, pending: null, sessions,
       }));
     });
-    await p.goto(APP);
+    await gotoApp(p);
     const t = (sel) => p.textContent(sel).then((x) => x.trim());
     assert.equal(await t('#target-label'), 'Choose a starting time');
     assert.equal(await t('#target-value'), 'No target');
@@ -629,7 +656,7 @@ try {
         selectedContextId: 'car', active: null, pending: null, sessions,
       }));
     });
-    await p.goto(APP);
+    await gotoApp(p);
     const t = (sel) => p.textContent(sel).then((x) => x.trim());
     const pickP = (name) => p.locator('#context-picker .seg', { hasText: name }).tap();
     const snapshot = async () => ({ value: await t('#target-value'), basis: await t('#target-basis'), rows: await p.locator('#history li').count() });
@@ -645,27 +672,27 @@ try {
     assert.equal(carBefore.value, '5:30');
 
     // The settings are folded away below the main flow.
-    assert.ok(await p.isHidden('#places-form'));
-    await p.tap('#places-details summary');
-    assert.ok(await p.isVisible('#places-form'));
+    assert.ok(await p.isHidden('#settings-form'));
+    await p.tap('#settings-details summary');
+    assert.ok(await p.isVisible('#settings-form'));
     assert.equal(await p.inputValue('#place-name-car'), 'Car');
 
     // Empty, duplicate and too long names are refused with a clear message.
     await p.fill('#place-name-car', '   ');
-    await p.tap('#places-save');
-    assert.equal(await t('#places-error'), 'Every place needs a name.');
+    await p.tap('#settings-save');
+    assert.equal(await t('#settings-error'), 'Every place needs a name.');
     await p.fill('#place-name-car', ' home ');
-    await p.tap('#places-save');
-    assert.equal(await t('#places-error'), "Two places can't have the same name.");
+    await p.tap('#settings-save');
+    assert.equal(await t('#settings-error'), "Two places can't have the same name.");
     await p.fill('#place-name-car', 'x'.repeat(31));
-    await p.tap('#places-save');
-    assert.equal(await t('#places-error'), 'Names can be at most 30 characters.');
+    await p.tap('#settings-save');
+    assert.equal(await t('#settings-error'), 'Names can be at most 30 characters.');
     assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Home', 'Car', 'Outside shop']);
 
     // Cancel restores the saved names.
-    await p.tap('#places-cancel');
-    assert.ok(await p.isHidden('#places-form'));
-    await p.tap('#places-details summary');
+    await p.tap('#settings-cancel');
+    assert.ok(await p.isHidden('#settings-form'));
+    await p.tap('#settings-details summary');
     assert.equal(await p.inputValue('#place-name-car'), 'Car');
 
     // Save, with spaces trimmed and Swedish characters.
@@ -673,15 +700,15 @@ try {
     await p.fill('#place-name-car', 'Bilburen');
     await p.fill('#place-name-outside-shop', 'Sovrummet');
     await p.screenshot({ path: OUT + '15-place-names.png', fullPage: true });
-    await p.tap('#places-save');
-    assert.equal(await t('#places-status'), 'Place names saved.');
+    await p.tap('#settings-save');
+    assert.equal(await t('#settings-status'), 'Settings saved.');
     assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Sovrummet']);
 
     // Everywhere the place is shown.
     assert.equal(await t('h1'), 'Charlie · Bilburen');
     assert.equal(await t('#progress-context'), 'Bilburen');
     assert.equal(await t('#history-context'), 'Bilburen');
-    assert.equal(await p.textContent('#help-places'), 'Hela lägenheten, Bilburen and Sovrummet');
+    assert.match(await p.textContent('#help-calc-1'), /Each place \(Hela lägenheten, Bilburen and Sovrummet\)/);
     // Same history and same progression as before.
     assert.deepEqual(await snapshot(), carBefore);
     await pickP('Hela lägenheten');
@@ -693,9 +720,9 @@ try {
     // A new session in the renamed place joins the old ones. Rename WHILE it runs.
     await p.tap('#start-btn');
     await p.clock.runFor(60_000);
-    await p.tap('#places-details summary');
+    await p.tap('#settings-details summary');
     await p.fill('#place-name-outside-shop', 'Utanför affären');
-    await p.tap('#places-save');
+    await p.tap('#settings-save');
     await p.clock.runFor(30_000);
     assert.equal(await t('#timer'), '01:30');
     assert.equal(await t('h1'), 'Charlie · Bilburen');
@@ -720,7 +747,7 @@ try {
     // Excel: shown names + stable id.
     const [csvDl] = await Promise.all([p.waitForEvent('download'), p.tap('#csv-btn')]);
     const csv = await readFile(await csvDl.path(), 'utf8');
-    assert.match(csv, /;Bilburen;300;5:00;;;Went well;;;Yes;car\r\n/);
+    assert.match(csv, /;Bilburen;300;5:00;;;Went well;;;Yes;car;\r\n/);
     assert.match(csv, /;Hela lägenheten;60;1:00;/);
     assert.match(csv, /;Utanför affären;40;0:40;;;Didn't go well;;;Yes;outside-shop/);
 
@@ -743,9 +770,9 @@ try {
     assert.equal(await p.locator('#history li').count(), 5); // the old Car session lands in Bilburen
 
     // Long names still fit the phone width.
-    await p.tap('#places-details summary');
+    await p.tap('#settings-details summary');
     await p.fill('#place-name-home', 'Hela lägenheten med balkongen');
-    await p.tap('#places-save');
+    await p.tap('#settings-save');
     const overflow = await p.evaluate(() => document.documentElement.scrollWidth > innerWidth);
     assert.equal(overflow, false);
     await p.screenshot({ path: OUT + '17-long-names.png', fullPage: true });
@@ -756,7 +783,7 @@ try {
     const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
-    await p.goto(APP);
+    await gotoApp(p);
     const t = (sel) => p.textContent(sel).then((x) => x.trim());
     await p.setInputFiles('#restore-input', renamedBackup);
     await p.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
@@ -764,7 +791,7 @@ try {
     assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Home', 'Car', 'Outside shop']);
     assert.ok(await p.isVisible('#restore-names'));
     assert.match(await t('#restore-names-text'), /“Bilburen” instead of “Car”/);
-    assert.match(await t('#restore-names-text'), /Your current names were kept\./);
+    assert.match(await t('#restore-names-text'), /Your current settings were kept\./);
     await p.screenshot({ path: OUT + '18-restore-names.png', fullPage: true });
     await p.tap('#restore-names-apply');
     assert.ok(await p.isHidden('#restore-names'));
@@ -774,7 +801,7 @@ try {
     // "Keep my names" path.
     const c2 = await browser.newContext({ ...phone, serviceWorkers: 'block' });
     const p2 = await c2.newPage();
-    await p2.goto(APP);
+    await gotoApp(p2);
     await p2.setInputFiles('#restore-input', renamedBackup);
     await p2.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
     await p2.tap('#restore-names-keep');
@@ -787,12 +814,294 @@ try {
     const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
-    await p.goto(APP);
-    await p.tap('#places-details summary');
+    await gotoApp(p);
+    await p.tap('#settings-details summary');
     await p.fill('#place-name-car', '<b>Bil</b> & "co"');
-    await p.tap('#places-save');
+    await p.tap('#settings-save');
     assert.equal(await p.locator('#context-picker b').count(), 0);
     assert.equal((await p.locator('#context-picker .seg').nth(1).textContent()), '<b>Bil</b> & "co"');
+    await c.close();
+  });
+
+  // ---------- v0.7: Swedish, dog name, comments, welcome ----------
+  await step('Swedish all the way: welcome → timer → end with comment → worry → history → edit', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE', acceptDownloads: true });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-10-05T09:00:00') });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    // The phone is Swedish: the welcome starts in Swedish.
+    assert.equal(await t('#welcome-title'), 'Välkommen till Alone Time');
+    assert.match(await t('#welcome-intro'), /Alla hundar är olika/);
+    assert.match(await t('#welcome-intro'), /inte individuella träningsråd/);
+    await p.fill('#welcome-dog', 'Majken');
+    await p.tap('#welcome-start');
+    assert.equal(await t('h1'), 'Majken · Hemma');
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hemma', 'Bilen', 'Utanför affären']);
+    assert.equal(await p.getAttribute('html', 'lang'), 'sv');
+    assert.equal(await t('#target-basis'), 'Inga pass loggade här än – välj en kort, lätt tid.');
+    assert.equal(await p.getAttribute('#target-up', 'aria-label'), 'Längre mål');
+
+    // Session 1: no comment.
+    await p.tap('#start-btn');
+    assert.equal(await t('#training-label'), 'Majken har varit ensam i');
+    await p.clock.runFor(40_000);
+    // Reload mid-session: timer continues.
+    await p.reload();
+    await p.clock.runFor(2_000);
+    assert.match(await t('#timer'), /^00:4\d$/);
+    await p.tap('#end-btn');
+    assert.equal(await t('#view-result .question'), 'Hur gick det?');
+    await p.tap('#good-btn');
+    assert.equal(await p.locator('#history .note').count(), 0);
+
+    // Session 2: comment, survives a reload on the result screen, saved with the result.
+    await p.clock.fastForward(24 * 3_600_000);
+    await p.tap('#start-btn');
+    await p.clock.runFor(60_000);
+    await p.tap('#end-btn');
+    await p.fill('#result-comment', 'Grannhunden skällde.\nHan lade sig efter en stund.');
+    await p.reload();
+    assert.equal(await p.inputValue('#result-comment'), 'Grannhunden skällde.\nHan lade sig efter en stund.');
+    await p.screenshot({ path: OUT + '19-sv-result-comment.png', fullPage: true });
+    await p.tap('#good-btn');
+    assert.match(await t('#history li:first-child .note'), /Grannhunden skällde\.\s+Han lade sig efter en stund\./);
+
+    // Session 3: comment + "didn't go well" + worry time.
+    await p.clock.fastForward(24 * 3_600_000);
+    await p.tap('#start-btn');
+    await p.clock.runFor(90_000);
+    await p.tap('#end-btn');
+    await p.fill('#result-comment', '=Jag glömde stoppa timern');
+    await p.tap('#bad-btn');
+    assert.equal(await t('#onset-question'), 'Ungefär när började Majken bli orolig?');
+    await p.fill('#onset-sec', '99');
+    await p.tap('#onset-save');
+    assert.equal(await t('#onset-error'), 'Ange hela minuter och 0–59 sekunder.');
+    await p.fill('#onset-min', '1');
+    await p.fill('#onset-sec', '10');
+    await p.tap('#onset-save');
+    assert.match(await t('#history li:first-child .tag'), /Gick inte bra · orolig efter 1:10/);
+    assert.equal(await t('#history li:first-child .note'), '=Jag glömde stoppa timern');
+    assert.match(await t('#history li:first-child .when'), /^(mån|tis|ons|tors|fre|lör|sön)/); // Swedish date
+    assert.equal(await t('#target-basis'), 'Senaste passet var svårt – kortare förslag.');
+    const suggestionBefore = await t('#target-value');
+    await p.screenshot({ path: OUT + '20-sv-history.png', fullPage: true });
+
+    // Edit: comment changed, then removed – suggestion unchanged.
+    await p.locator('#history .row').first().tap();
+    assert.equal(await p.inputValue('#edit-comment'), '=Jag glömde stoppa timern');
+    assert.equal(await t('#edit-title'), 'Ändra pass');
+    await p.fill('#edit-comment', 'Ny kommentar');
+    await p.tap('#edit-save');
+    assert.equal(await t('#history li:first-child .note'), 'Ny kommentar');
+    assert.equal(await t('#target-value'), suggestionBefore);
+    await p.locator('#history .row').first().tap();
+    await p.fill('#edit-comment', '   ');
+    await p.tap('#edit-save');
+    assert.equal(await p.locator('#history li:first-child .note').count(), 0);
+    assert.equal(await t('#target-value'), suggestionBefore);
+
+    // A very long comment is cut to 500 characters, shown shortened, complete in the sheet.
+    await p.locator('#history .row').nth(1).tap();
+    await p.fill('#edit-comment', 'Å'.repeat(600));
+    assert.equal((await p.inputValue('#edit-comment')).length, 500);
+    await p.tap('#edit-save');
+    const noteBox = await p.locator('#history li:nth-child(2) .note').boundingBox();
+    assert.ok(noteBox.height < 60, `note height ${noteBox.height}`); // two lines at most
+    await p.locator('#history .row').nth(1).tap();
+    assert.equal((await p.inputValue('#edit-comment')).length, 500);
+    await p.tap('#edit-cancel');
+
+    // Excel in Swedish mode: comment column, formula-like text neutralised, Swedish letters.
+    await p.locator('#history .row').first().tap();
+    await p.fill('#edit-comment', '=SUMMA(A1)\n"citat"; åäö');
+    await p.tap('#edit-save');
+    const [dl] = await Promise.all([p.waitForEvent('download'), p.tap('#csv-btn')]);
+    const csv = await readFile(await dl.path(), 'utf8');
+    assert.ok(csv.includes(';home;"\'=SUMMA(A1)\n""citat""; åäö"\r\n'), csv);
+    assert.equal(await t('#data-status'), 'Excel-filen är skapad.');
+    assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await c.close();
+  });
+
+  await step('existing user: no welcome, Charlie and history kept; optional language choice; renames keep everything', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-10-20T18:00:00') });
+    await p.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      const day = (d) => new Date(2026, 9, 20 - d, 10).getTime();
+      const sessions = [3, 2, 1].map((d, i) => ({
+        id: 'x' + i, dogId: 'charlie', contextId: 'car', startedAt: day(d), endedAt: day(d) + 300_000,
+        durationSec: 300, targetSec: null, result: 'good',
+      }));
+      // Saved by v0.6: no lang, no onboarded flag, a renamed place.
+      localStorage.setItem('alone-training:v2', JSON.stringify({
+        schemaVersion: 2, dogs: [{ id: 'charlie', name: 'Charlie' }],
+        contexts: [{ id: 'home', name: 'Home' }, { id: 'car', name: 'Bilburen' }, { id: 'outside-shop', name: 'Outside shop' }],
+        selectedContextId: 'car', active: null, pending: null, sessions,
+      }));
+    });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    assert.ok(await p.isHidden('#welcome'));
+    assert.equal(await t('h1'), 'Charlie · Bilburen');
+    assert.ok(await p.isVisible('#lang-banner')); // small, optional
+    const before = { value: await t('#target-value'), rows: await p.locator('#history li').count() };
+    assert.equal(before.value, '5:30');
+
+    // The banner never shows during a running session.
+    await p.tap('#start-btn');
+    assert.ok(await p.isHidden('#lang-banner'));
+    await p.tap('#end-btn');
+    await p.tap('#discard-btn');
+
+    // Choose Swedish: interface translated, the user's names untouched (also the default English ones).
+    await p.tap('[data-banner-lang="sv"]');
+    assert.ok(await p.isHidden('#lang-banner'));
+    assert.equal(await t('#start-btn'), 'Starta träning');
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Home', 'Bilburen', 'Outside shop']);
+    assert.equal(await t('#target-value'), before.value);
+    assert.equal(await p.locator('#history li').count(), before.rows);
+    await p.screenshot({ path: OUT + '21-existing-user-sv.png', fullPage: true });
+
+    // Settings: validation, then rename the dog.
+    await p.tap('#settings-details summary');
+    assert.equal(await p.inputValue('#settings-dog'), 'Charlie');
+    await p.fill('#settings-dog', '   ');
+    await p.tap('#settings-save');
+    assert.equal(await t('#settings-error'), 'Skriv hundens namn.');
+    await p.fill('#settings-dog', 'Ö'.repeat(31));
+    await p.tap('#settings-save');
+    assert.equal(await t('#settings-error'), 'Hundens namn får vara högst 30 tecken.');
+    await p.fill('#settings-dog', '  Sixten ');
+    await p.fill('#place-name-home', ' home ');
+    await p.fill('#place-name-car', 'Home');
+    await p.tap('#settings-save');
+    assert.equal(await t('#settings-error'), 'Två spår kan inte ha samma namn.');
+    await p.fill('#place-name-home', 'Hallen');
+    await p.fill('#place-name-car', 'Bilburen');
+    await p.screenshot({ path: OUT + '22-settings-sv.png', fullPage: true });
+    await p.tap('#settings-save');
+    assert.equal(await t('#settings-status'), 'Inställningarna är sparade.');
+    assert.equal(await t('h1'), 'Sixten · Bilburen');
+    const stored = await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')));
+    assert.equal(stored.dogs[0].id, 'charlie'); // stable id
+    assert.equal(stored.dogs[0].name, 'Sixten');
+    assert.ok(stored.sessions.every((x) => x.dogId === 'charlie'));
+    assert.equal(stored.sessions.length, 3);
+    assert.equal(await t('#target-value'), before.value);
+
+    // Dog name during a running session: timer and session unaffected.
+    await p.tap('#start-btn');
+    await p.clock.runFor(30_000);
+    await p.tap('#settings-details summary');
+    await p.fill('#settings-dog', 'Sixten den store');
+    await p.tap('#settings-save');
+    await p.clock.runFor(15_000);
+    assert.equal(await t('#timer'), '00:45');
+    assert.equal(await t('#training-label'), 'Sixten den store har varit ensam i');
+    await p.tap('#end-btn');
+    await p.tap('#good-btn');
+    assert.equal(await p.locator('#history li').count(), 4);
+
+    // Switch back to English in settings: names stay exactly as they are.
+    await p.tap('#settings-details summary');
+    await p.check('input[name="settings-lang"][value="en"]');
+    await p.tap('#settings-save');
+    assert.equal(await t('#start-btn'), 'Start training');
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hallen', 'Bilburen', 'Outside shop']);
+    await p.reload();
+    assert.equal(await t('h1'), 'Sixten den store · Bilburen');
+    assert.equal(await t('#start-btn'), 'Start training');
+    assert.ok(await p.isHidden('#lang-banner'));
+
+    // Keyboard + labels: every button and input in the ready screen has an accessible name.
+    const unnamed = await p.evaluate(() => [...document.querySelectorAll('#view-ready button, #view-ready input')]
+      .filter((el) => el.offsetParent && !(el.getAttribute('aria-label') || el.textContent.trim() || el.labels?.length)).length);
+    assert.equal(unnamed, 0);
+    await c.close();
+  });
+
+  await step('backup with dog name, language and comments; old backups never overwrite settings', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', acceptDownloads: true });
+    const p = await c.newPage();
+    watch(p);
+    await gotoApp(p, { lang: 'sv', dog: 'Majken' });
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    await p.tap('#start-btn');
+    await p.tap('#end-btn');
+    await p.fill('#result-comment', 'Lugn hela tiden');
+    await p.tap('#good-btn');
+    const [dl] = await Promise.all([p.waitForEvent('download'), p.tap('#backup-btn')]);
+    const path = OUT + 'backup-v07.json';
+    await dl.saveAs(path);
+    const data = JSON.parse(await readFile(path, 'utf8'));
+    assert.equal(data.lang, 'sv');
+    assert.equal(data.dogs[0].name, 'Majken');
+    assert.equal(data.sessions[0].comment, 'Lugn hela tiden');
+    assert.deepEqual(data.contexts.map((x) => x.name), ['Hemma', 'Bilen', 'Utanför affären']);
+
+    // Restore into an English "Charlie" phone: sessions + comments added, settings only offered.
+    const c2 = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p2 = await c2.newPage();
+    watch(p2);
+    await gotoApp(p2);
+    const t2 = (sel) => p2.textContent(sel).then((x) => x.trim());
+    await p2.setInputFiles('#restore-input', path);
+    await p2.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
+    assert.equal(await t2('h1'), 'Charlie · Home');
+    assert.match(await t2('#restore-names-text'), /dog “Majken” instead of “Charlie”/);
+    assert.match(await t2('#restore-names-text'), /Svenska instead of English/);
+    assert.match(await t2('#restore-names-text'), /“Hemma” instead of “Home”/);
+    assert.equal(await t2('#history li:first-child .note'), 'Lugn hela tiden');
+    await p2.tap('#restore-names-apply');
+    assert.equal(await t2('h1'), 'Majken · Hemma');
+    assert.equal(await t2('#start-btn'), 'Starta träning');
+
+    // An old backup without these fields: nothing changes, no prompt.
+    const old = { name: 'old.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({
+      sessions: [{ id: 'o1', dogId: 'charlie', contextId: 'home', startedAt: new Date(2026, 8, 1, 10).getTime(), durationSec: 60, result: 'good' }],
+    })) };
+    await p2.setInputFiles('#restore-input', old);
+    await p2.waitForFunction(() => !/^Läser/.test(document.getElementById('data-status').textContent));
+    assert.equal(await t2('#data-status'), 'Återställde 1 pass.');
+    assert.ok(await p2.isHidden('#restore-names'));
+    assert.equal(await t2('h1'), 'Majken · Hemma');
+    await c2.close();
+    await c.close();
+  });
+
+  await step('dark mode, Swedish, with comments: readable, fits the phone', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', colorScheme: 'dark' });
+    const p = await c.newPage();
+    watch(p);
+    await gotoApp(p, { lang: 'sv', dog: 'Majken' });
+    await p.tap('#start-btn');
+    await p.tap('#end-btn');
+    await p.fill('#result-comment', 'Han lade sig efter en stund. Grannhunden skällde två gånger men sedan var det lugnt resten av passet.');
+    await p.tap('#good-btn');
+    await p.tap('#help-intro summary');
+    assert.match(await p.textContent('#help-intro-body'), /Exempel:/);
+    assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await p.screenshot({ path: OUT + '23-dark-sv.png', fullPage: true });
+    await c.close();
+  });
+
+  await step('icons referenced by the manifest and the page exist', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    await p.goto(APP);
+    const manifest = await (await p.request.get(APP + 'manifest.webmanifest')).json();
+    const links = await p.evaluate(() => [...document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]')].map((l) => l.getAttribute('href')));
+    for (const src of [...manifest.icons.map((i) => i.src), ...links]) {
+      const res = await p.request.get(APP + src);
+      assert.equal(res.status(), 200, src);
+    }
     await c.close();
   });
 
@@ -801,7 +1110,7 @@ try {
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-01T09:00:00') });
-    await p.goto(APP);
+    await gotoApp(p);
     await p.tap('#start-btn');
     const setHidden = (hidden) => p.evaluate((h) => {
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
@@ -820,7 +1129,7 @@ try {
     const c = await browser.newContext({ ...phone });
     const p = await c.newPage();
     watch(p);
-    await p.goto(APP);
+    await gotoApp(p);
     await p.evaluate(() => navigator.serviceWorker.ready);
     await p.reload();
     await p.waitForFunction(() => navigator.serviceWorker.controller != null);
