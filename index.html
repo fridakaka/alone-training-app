@@ -37,6 +37,16 @@
       </div>
     </div>
 
+    <!-- After a language switch: offer the new language's names for places that still have
+         another language's untouched default name. Never changes anything by itself. -->
+    <div id="names-offer" class="lang-banner names-offer" role="group" aria-labelledby="names-offer-text" hidden>
+      <span id="names-offer-text"></span>
+      <div class="chips">
+        <button id="names-offer-apply" class="chip chip-strong" type="button" data-i18n="namesOfferApply">Use these names</button>
+        <button id="names-offer-keep" class="chip" type="button" data-i18n="namesOfferKeep">Keep current</button>
+      </div>
+    </div>
+
     <!-- State 1: ready -->
     <section id="view-ready" class="panel">
       <div id="context-picker" class="segmented" role="group" data-i18n-aria="pickerAria" aria-label="Where are you training?">
@@ -170,13 +180,6 @@
         </label>
       </div>
       <p id="data-status" class="data-status" role="status"></p>
-      <div id="restore-names" class="restore-names" hidden>
-        <p id="restore-names-text" class="hint"></p>
-        <div class="chips">
-          <button id="restore-names-apply" class="chip chip-strong" type="button" data-i18n="restoreApply">Use settings from backup</button>
-          <button id="restore-names-keep" class="chip" type="button" data-i18n="restoreKeep">Keep my settings</button>
-        </div>
-      </div>
     </section>
 
     <section id="help-section" class="card" aria-labelledby="help-title">
@@ -220,7 +223,33 @@
       <p id="welcome-error" class="form-error" role="alert"></p>
       <button id="welcome-start" type="submit" class="btn btn-primary" data-i18n="welcomeStart">Get started</button>
     </form>
+    <div class="welcome-import">
+      <p class="hint" data-i18n="welcomeImportHint">Used Alone Time before? Import your backup file instead.</p>
+      <label class="btn btn-quiet file-btn"><span data-i18n="welcomeImport">Import backup</span>
+        <input id="welcome-import-input" type="file" accept=".json,application/json">
+      </label>
+    </div>
   </section>
+
+  <!-- Review BEFORE an import changes anything. -->
+  <dialog id="import-dialog" class="sheet" aria-labelledby="import-title">
+    <form id="import-form" method="dialog">
+      <h2 id="import-title" data-i18n="importTitle">Import backup</h2>
+      <ul id="import-summary" class="import-summary"></ul>
+      <div id="import-settings" class="import-settings" hidden>
+        <p id="import-settings-text" class="hint"></p>
+        <label id="import-use-settings-field" class="check">
+          <input id="import-use-settings" type="checkbox">
+          <span data-i18n="importUseSettings">Also use the backup's dog name, language and place names</span>
+        </label>
+      </div>
+      <p class="hint" data-i18n="importSafe">Nothing on this phone is deleted.</p>
+      <div class="sheet-actions">
+        <button id="import-cancel" type="button" class="btn btn-quiet" data-i18n="cancel">Cancel</button>
+        <button id="import-confirm" type="submit" class="btn btn-primary" data-i18n="importConfirm">Import</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="edit-dialog" class="sheet" aria-labelledby="edit-title">
     <form id="edit-form" method="dialog">
@@ -284,6 +313,6 @@
     </form>
   </dialog>
 
-  <script type="module" src="src/app.js"></script>
+  <script type="module" src="src/boot.js"></script>
 </body>
 </html>

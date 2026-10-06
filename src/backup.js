@@ -180,3 +180,18 @@ export function backupFileName(ext, now = Date.now()) {
   const pad = (n) => String(n).padStart(2, '0');
   return `alone-time-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.${ext}`;
 }
+
+// What an import would do, for the review shown BEFORE anything changes.
+export function importSummary(state, parsed) {
+  const have = new Set(state.sessions.map((s) => s.id));
+  const fresh = parsed.sessions.filter((s) => !have.has(s.id));
+  const times = fresh.map((s) => s.startedAt).sort((a, b) => a - b);
+  return {
+    newCount: fresh.length,
+    existingCount: parsed.sessions.length - fresh.length,
+    firstAt: times[0] ?? null,
+    lastAt: times[times.length - 1] ?? null,
+    commentCount: fresh.filter((s) => s.comment).length,
+    changes: settingsChanges(state, parsed),
+  };
+}

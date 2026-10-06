@@ -134,14 +134,31 @@ const en = {
   dataNothingNew: 'Nothing new in that backup – all its sessions are already here.',
   dataNotBackup: "This file isn't a backup from this app.",
   dataReadError: 'Could not read that file.',
-  restoreDiffers: 'The backup has other settings: {list}. Your current settings were kept.',
   restoreItemPlace: '“{from}” instead of “{current}”',
   restoreItemDog: 'dog “{from}” instead of “{current}”',
   restoreItemLang: '{from} instead of {current}',
-  restoreApply: 'Use settings from backup',
-  restoreKeep: 'Keep my settings',
-  restoreApplied: 'Settings from the backup are now used.',
-  restoreKept: 'Your settings were kept.',
+
+
+  // Import review (before anything changes)
+  importTitle: 'Import backup',
+  importNewOne: '1 new session will be added',
+  importNewMany: '{n} new sessions will be added',
+  importNone: 'No new sessions in this backup.',
+  importExisting: '{n} sessions are already here and stay as they are',
+  importPeriod: 'Sessions from {from} to {to}',
+  importComments: '{n} of them with a comment',
+  importSettingsDiffer: 'The backup has other settings: {list}.',
+  importSettingsNew: 'From the backup: dog “{dog}”, language {lang}, places {places}.',
+  importUseSettings: "Also use the backup's dog name, language and place names",
+  importSafe: 'Nothing on this phone is deleted. Sessions that are already here stay as they are.',
+  importConfirm: 'Import',
+  importCancelled: 'Import cancelled. Nothing was changed.',
+  importSettingsApplied: 'Settings from the backup are now used.',
+  welcomeImportHint: 'Used Alone Time before? Import your backup file instead (e.g. from the Files app).',
+  welcomeImport: 'Import backup',
+  namesOfferText: 'Use English names for the places? {list}',
+  namesOfferApply: 'Use these names',
+  namesOfferKeep: 'Keep current',
 
   // Edit sheet
   editTitle: 'Edit session',
@@ -302,14 +319,29 @@ const sv = {
   dataNothingNew: 'Inget nytt i säkerhetskopian – alla pass finns redan här.',
   dataNotBackup: 'Filen är ingen säkerhetskopia från den här appen.',
   dataReadError: 'Kunde inte läsa filen.',
-  restoreDiffers: 'Säkerhetskopian har andra inställningar: {list}. Dina nuvarande inställningar behölls.',
   restoreItemPlace: '”{from}” i stället för ”{current}”',
   restoreItemDog: 'hunden ”{from}” i stället för ”{current}”',
   restoreItemLang: '{from} i stället för {current}',
-  restoreApply: 'Använd säkerhetskopians inställningar',
-  restoreKeep: 'Behåll mina inställningar',
-  restoreApplied: 'Säkerhetskopians inställningar används nu.',
-  restoreKept: 'Dina inställningar behölls.',
+
+  importTitle: 'Importera säkerhetskopia',
+  importNewOne: '1 nytt pass läggs till',
+  importNewMany: '{n} nya pass läggs till',
+  importNone: 'Inga nya pass i säkerhetskopian.',
+  importExisting: '{n} pass finns redan och lämnas som de är',
+  importPeriod: 'Pass från {from} till {to}',
+  importComments: '{n} av dem med kommentar',
+  importSettingsDiffer: 'Säkerhetskopian har andra inställningar: {list}.',
+  importSettingsNew: 'Från säkerhetskopian: hunden ”{dog}”, språket {lang}, spåren {places}.',
+  importUseSettings: 'Använd också säkerhetskopians hundnamn, språk och spårnamn',
+  importSafe: 'Inget i telefonen raderas. Pass som redan finns lämnas som de är.',
+  importConfirm: 'Importera',
+  importCancelled: 'Importen avbröts. Inget ändrades.',
+  importSettingsApplied: 'Säkerhetskopians inställningar används nu.',
+  welcomeImportHint: 'Har du använt Alone Time förut? Importera din säkerhetskopia i stället (t.ex. från appen Filer).',
+  welcomeImport: 'Importera säkerhetskopia',
+  namesOfferText: 'Byta spårnamnen till svenska? {list}',
+  namesOfferApply: 'Använd de här namnen',
+  namesOfferKeep: 'Behåll nuvarande',
 
   editTitle: 'Ändra pass',
   editPlace: 'Spår',
@@ -411,4 +443,16 @@ export function formatDuration(totalSec, lang = current) {
 export function listNames(names, lang = current) {
   if (names.length < 2) return names[0] ?? '';
   return `${names.slice(0, -1).join(', ')} ${t('listAnd', {}, lang)} ${names[names.length - 1]}`;
+}
+
+// Places that still have the untouched default name of ANOTHER language get an offer for
+// the default name in `lang` (e.g. Home → Hemma). Names the user chose are never included.
+// Returns [{ id, from, to }].
+export function defaultNameOffer(contexts, lang) {
+  const target = DEFAULT_PLACE_NAMES[lang];
+  if (!target) return [];
+  return contexts
+    .filter((c) => target[c.id] && c.name !== target[c.id])
+    .filter((c) => Object.entries(DEFAULT_PLACE_NAMES).some(([l, names]) => l !== lang && names[c.id] === c.name))
+    .map((c) => ({ id: c.id, from: c.name, to: target[c.id] }));
 }

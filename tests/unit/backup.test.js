@@ -198,3 +198,20 @@ test('old backups without dog name or language change nothing', () => {
   // A backup with the default dog name only differs if the names differ.
   assert.deepEqual(settingsChanges(createInitialState(), parseBackup(buildBackup(createInitialState()))), []);
 });
+
+// ---------- v0.8: import review ----------
+import { importSummary } from '../../src/backup.js';
+
+test('import review: counts new and existing sessions, comments and setting differences, changes nothing', () => {
+  const phone = { ...createInitialState(), lang: 'en', sessions: [sess('s1')] };
+  const backup = { ...renameDog(createInitialState(), 'Majken'), lang: 'sv', sessions: [sess('s1'), sess('s2', { comment: 'Lugn' }), sess('s3')] };
+  const parsed = parseBackup(buildBackup(backup));
+  const before = JSON.stringify(phone);
+  const sum = importSummary(phone, parsed);
+  assert.equal(sum.newCount, 2);
+  assert.equal(sum.existingCount, 1);
+  assert.equal(sum.commentCount, 1);
+  assert.ok(sum.firstAt <= sum.lastAt);
+  assert.deepEqual(sum.changes.map((c) => c.kind), ['dog', 'lang']);
+  assert.equal(JSON.stringify(phone), before);
+});

@@ -36,6 +36,23 @@ async function gotoApp(p, { lang = 'en', dog = 'Charlie' } = {}) {
   }
 }
 
+// Choose a backup file: the app shows a review first; nothing changes until "Import".
+// Returns { summary, settings, status } (status after confirming / cancelling / an error).
+async function importFile(p, file, { useSettings = false, cancel = false, input = '#restore-input' } = {}) {
+  await p.setInputFiles(input, file);
+  await p.waitForFunction(() =>
+    document.getElementById('import-dialog').open || /\S/.test(document.getElementById('data-status').textContent) &&
+    !/^(Reading|Läser)/.test(document.getElementById('data-status').textContent));
+  if (!(await p.evaluate(() => document.getElementById('import-dialog').open))) {
+    return { status: (await p.textContent('#data-status')).trim(), summary: null };
+  }
+  const summary = (await p.textContent('#import-summary')).trim();
+  const settings = (await p.isVisible('#import-settings')) ? (await p.textContent('#import-settings-text')).trim() : '';
+  if (useSettings && (await p.isVisible('#import-use-settings'))) await p.check('#import-use-settings');
+  await p.tap(cancel ? '#import-cancel' : '#import-confirm');
+  return { summary, settings, status: (await p.textContent('#data-status')).trim() };
+}
+
 try {
   const ctx = await browser.newContext({ ...phone, serviceWorkers: 'block' });
   const page = await ctx.newPage();
@@ -412,11 +429,12 @@ try {
     watch(p);
     await gotoApp(p);
     assert.equal(await p.locator('#history li').count(), 0);
-    const restoreStatus = async (file) => {
-      await p.setInputFiles('#restore-input', file);
-      await p.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
-      return p.textContent('#data-status');
-    };
+    const restoreStatus = async (file) => (await importFile(p, file)).status;
+    // Cancelling the review changes nothing.
+    const cancelled = await importFile(p, backupPath, { cancel: true });
+    assert.match(cancelled.summary, /\d+ new sessions will be added/);
+    assert.equal(cancelled.status, 'Import cancelled. Nothing was changed.');
+    assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2') || '{"sessions":[]}').sessions.length), 0);
     assert.match(await restoreStatus(backupPath), /Restored \d+ sessions/);
     const total = JSON.parse(await readFile(backupPath, 'utf8')).sessions.length;
     assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length), total);
@@ -762,10 +780,9 @@ try {
     const oldBackup = { name: 'old.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({
       sessions: [{ id: 'old1', dogId: 'charlie', contextId: 'car', startedAt: new Date(2026, 8, 1, 10).getTime(), durationSec: 120, result: 'good' }],
     })) };
-    await p.setInputFiles('#restore-input', oldBackup);
-    await p.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
-    assert.match(await t('#data-status'), /Restored 1 session/);
-    assert.ok(await p.isHidden('#restore-names'));
+    const oldImport = await importFile(p, oldBackup);
+    assert.match(oldImport.status, /Restored 1 session/);
+    assert.equal(oldImport.settings, ''); // no names in an old backup → nothing to offer
     assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Utanför affären']);
     assert.equal(await p.locator('#history li').count(), 5); // the old Car session lands in Bilburen
 
@@ -785,16 +802,16 @@ try {
     watch(p);
     await gotoApp(p);
     const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    // Review first: other place names are listed, and NOT applied unless ticked.
     await p.setInputFiles('#restore-input', renamedBackup);
-    await p.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
-    assert.match(await t("#data-status"), /Restored 7 sessions/); // backup taken before the old session was restored
-    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Home', 'Car', 'Outside shop']);
-    assert.ok(await p.isVisible('#restore-names'));
-    assert.match(await t('#restore-names-text'), /“Bilburen” instead of “Car”/);
-    assert.match(await t('#restore-names-text'), /Your current settings were kept\./);
-    await p.screenshot({ path: OUT + '18-restore-names.png', fullPage: true });
-    await p.tap('#restore-names-apply');
-    assert.ok(await p.isHidden('#restore-names'));
+    await p.waitForFunction(() => document.getElementById('import-dialog').open);
+    assert.match(await t('#import-summary'), /7 new sessions will be added/); // backup taken before the old session was restored
+    assert.match(await t('#import-settings-text'), /“Bilburen” instead of “Car”/);
+    assert.equal(await p.isChecked('#import-use-settings'), false);
+    await p.screenshot({ path: OUT + '18-import-review.png', fullPage: true });
+    await p.check('#import-use-settings');
+    await p.tap('#import-confirm');
+    assert.match(await t('#data-status'), /Restored 7 sessions\. Settings from the backup are now used\./);
     assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Utanför affären']);
     await p.reload();
     assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Utanför affären']);
@@ -802,9 +819,8 @@ try {
     const c2 = await browser.newContext({ ...phone, serviceWorkers: 'block' });
     const p2 = await c2.newPage();
     await gotoApp(p2);
-    await p2.setInputFiles('#restore-input', renamedBackup);
-    await p2.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
-    await p2.tap('#restore-names-keep');
+    const kept = await importFile(p2, renamedBackup); // box not ticked → own names kept
+    assert.match(kept.settings, /instead of/);
     assert.deepEqual(await p2.locator('#context-picker .seg').allTextContents(), ['Home', 'Car', 'Outside shop']);
     await c2.close();
     await c.close();
@@ -1053,13 +1069,15 @@ try {
     await gotoApp(p2);
     const t2 = (sel) => p2.textContent(sel).then((x) => x.trim());
     await p2.setInputFiles('#restore-input', path);
-    await p2.waitForFunction(() => !/^Reading/.test(document.getElementById('data-status').textContent));
+    await p2.waitForFunction(() => document.getElementById('import-dialog').open);
     assert.equal(await t2('h1'), 'Charlie · Home');
-    assert.match(await t2('#restore-names-text'), /dog “Majken” instead of “Charlie”/);
-    assert.match(await t2('#restore-names-text'), /Svenska instead of English/);
-    assert.match(await t2('#restore-names-text'), /“Hemma” instead of “Home”/);
+    assert.match(await t2('#import-settings-text'), /dog “Majken” instead of “Charlie”/);
+    assert.match(await t2('#import-settings-text'), /Svenska instead of English/);
+    assert.match(await t2('#import-settings-text'), /“Hemma” instead of “Home”/);
+    assert.match(await t2('#import-summary'), /1 new session will be added[\s\S]*1 of them with a comment/);
+    await p2.check('#import-use-settings');
+    await p2.tap('#import-confirm');
     assert.equal(await t2('#history li:first-child .note'), 'Lugn hela tiden');
-    await p2.tap('#restore-names-apply');
     assert.equal(await t2('h1'), 'Majken · Hemma');
     assert.equal(await t2('#start-btn'), 'Starta träning');
 
@@ -1067,10 +1085,9 @@ try {
     const old = { name: 'old.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({
       sessions: [{ id: 'o1', dogId: 'charlie', contextId: 'home', startedAt: new Date(2026, 8, 1, 10).getTime(), durationSec: 60, result: 'good' }],
     })) };
-    await p2.setInputFiles('#restore-input', old);
-    await p2.waitForFunction(() => !/^Läser/.test(document.getElementById('data-status').textContent));
-    assert.equal(await t2('#data-status'), 'Återställde 1 pass.');
-    assert.ok(await p2.isHidden('#restore-names'));
+    const oldRes = await importFile(p2, old);
+    assert.equal(oldRes.status, 'Återställde 1 pass.');
+    assert.equal(oldRes.settings, '');
     assert.equal(await t2('h1'), 'Majken · Hemma');
     await c2.close();
     await c.close();
@@ -1102,6 +1119,153 @@ try {
       const res = await p.request.get(APP + src);
       assert.equal(res.status(), 200, src);
     }
+    await c.close();
+  });
+
+  // ---------- v0.8: iOS app (simulated native bridge), import review, Swedish names ----------
+  // Simulates what Capacitor provides inside the iOS app: Preferences (durable storage), the
+  // app's LiveActivity plugin, Filesystem and Share. Calls are recorded, also across reloads.
+  const nativeMock = () => {
+    const S = (k, v) => (v === undefined ? JSON.parse(sessionStorage.getItem(k) || 'null') : sessionStorage.setItem(k, JSON.stringify(v)));
+    const log = (entry) => S('__calls', [...(S('__calls') || []), entry]);
+    window.Capacitor = {
+      isNativePlatform: () => true,
+      Plugins: {
+        Preferences: {
+          get: async ({ key }) => ({ value: (S('__prefs') || {})[key] ?? null }),
+          set: async ({ key, value }) => S('__prefs', { ...(S('__prefs') || {}), [key]: value }),
+        },
+        LiveActivity: {
+          start: async (payload) => (log(['start', payload]), { started: true }),
+          end: async () => log(['end']),
+        },
+        Filesystem: {
+          writeFile: async ({ path, data }) => (log(['writeFile', path, data.length]), { uri: `file:///cache/${path}` }),
+        },
+        Share: { share: async (o) => log(['share', o.url]) },
+      },
+    };
+  };
+
+  await step('iOS app: Live Activity starts with a session, survives reopening, ends on End/discard; data is kept natively', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    watch(p);
+    await p.addInitScript(nativeMock);
+    await p.clock.install({ time: new Date('2026-10-06T09:00:00') });
+    const calls = () => p.evaluate(() => JSON.parse(sessionStorage.getItem('__calls') || '[]'));
+    const last = async () => (await calls()).at(-1);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    await gotoApp(p, { lang: 'sv', dog: 'Majken' });
+    assert.deepEqual(await last(), ['end']); // app opened without a session: no stale activity left
+
+    // Start with a target.
+    await p.tap('#target-up');
+    await p.fill('#target-sec', '30');
+    await p.tap('#target-set');
+    await p.tap('#start-btn');
+    const [kind, payload] = await last();
+    assert.equal(kind, 'start');
+    assert.equal(payload.aloneForLabel, 'Majken har varit ensam i');
+    assert.equal(payload.placeName, 'Hemma');
+    assert.equal(payload.targetLabel, 'Mål 0:30');
+    // The lock-screen timer counts from exactly the session's saved start time.
+    assert.equal(payload.startedAt, await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).active.startedAt));
+
+    // Past the target: nothing ends by itself.
+    await p.clock.runFor(45_000);
+    assert.equal((await last())[0], 'start');
+    assert.ok(await p.isVisible('#end-btn'));
+
+    // Reopen: same session → the activity is restored with the same start time.
+    await p.reload();
+    await p.clock.runFor(1_000);
+    assert.match(await t('#timer'), /^00:4\d$/);
+    const [k2, p2] = await last();
+    assert.equal(k2, 'start');
+    assert.equal(p2.sessionId, payload.sessionId);
+
+    // iOS cleared the web view's storage: the data comes back from native storage.
+    await p.evaluate(() => localStorage.clear());
+    await p.reload();
+    await p.clock.runFor(1_000);
+    assert.equal(await t('h1'), 'Majken · Hemma');
+    assert.match(await t('#timer'), /^00:4\d$/);
+
+    // End → activity ends right away (before choosing a result); discard keeps it ended.
+    await p.tap('#end-btn');
+    assert.deepEqual(await last(), ['end']);
+    await p.tap('#discard-btn');
+    assert.deepEqual(await last(), ['end']);
+
+    // Save backup in the app: written to a file and shared (→ Save to Files).
+    await p.tap('#backup-btn');
+    await p.waitForFunction(() => JSON.parse(sessionStorage.getItem('__calls') || '[]').some((x) => x[0] === 'share'));
+    const shared = (await calls()).filter((x) => x[0] === 'writeFile' || x[0] === 'share');
+    assert.match(shared[0][1], /^alone-time-\d{4}-\d\d-\d\d\.json$/);
+    assert.match(shared[1][1], /^file:\/\/\/cache\/alone-time-/);
+    assert.match(await t('#data-status'), /^Säkerhetskopian är sparad/);
+    await c.close();
+  });
+
+  await step('first start on a new phone (e.g. the iOS app): import the old backup from the welcome screen, after a review', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    watch(p);
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    assert.ok(await p.isVisible('#welcome-import-input'));
+    // Not a backup: a clear message, still on the welcome screen.
+    await p.setInputFiles('#welcome-import-input', { name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('nope') });
+    await p.waitForFunction(() => /\S/.test(document.getElementById('welcome-error').textContent));
+    assert.equal(await t('#welcome-error'), "This file isn't a backup from this app.");
+    // The real backup (dog Majken, Swedish, comments) made earlier.
+    await p.setInputFiles('#welcome-import-input', OUT + 'backup-v07.json');
+    await p.waitForFunction(() => document.getElementById('import-dialog').open);
+    assert.match(await t('#import-summary'), /1 new session will be added/);
+    assert.match(await t('#import-settings-text'), /dog “Majken”, language Svenska, places Hemma, Bilen and Utanför affären/);
+    assert.ok(await p.isHidden('#import-use-settings-field'));
+    await p.tap('#import-confirm');
+    assert.ok(await p.isHidden('#welcome'));
+    assert.equal(await t('h1'), 'Majken · Hemma');
+    assert.equal(await t('#start-btn'), 'Starta träning');
+    assert.equal(await t('#history li:first-child .note'), 'Lugn hela tiden');
+    await c.close();
+  });
+
+  await step('choosing Swedish offers Swedish names only for untouched English default names', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p = await c.newPage();
+    watch(p);
+    await p.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      localStorage.setItem('alone-training:v2', JSON.stringify({
+        schemaVersion: 2, dogs: [{ id: 'charlie', name: 'Charlie' }],
+        contexts: [{ id: 'home', name: 'Home' }, { id: 'car', name: 'Bilburen' }, { id: 'outside-shop', name: 'Outside shop' }],
+        selectedContextId: 'home', active: null, pending: null, sessions: [],
+      }));
+    });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    assert.ok(await p.isHidden('#names-offer'));
+    await p.tap('[data-banner-lang="sv"]');
+    assert.ok(await p.isVisible('#names-offer'));
+    assert.equal(await t('#names-offer-text'), 'Byta spårnamnen till svenska? Home → Hemma, Outside shop → Utanför affären');
+    await p.screenshot({ path: OUT + '24-names-offer.png', fullPage: true });
+    // Nothing changed yet.
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Home', 'Bilburen', 'Outside shop']);
+    await p.tap('#names-offer-apply');
+    assert.ok(await p.isHidden('#names-offer'));
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hemma', 'Bilburen', 'Utanför affären']);
+    // "Keep current" path, via Settings.
+    await p.tap('#settings-details summary');
+    await p.check('input[name="settings-lang"][value="en"]');
+    await p.tap('#settings-save');
+    assert.equal(await t('#names-offer-text'), 'Use English names for the places? Hemma → Home, Utanför affären → Outside shop');
+    await p.tap('#names-offer-keep');
+    assert.ok(await p.isHidden('#names-offer'));
+    assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hemma', 'Bilburen', 'Utanför affären']);
     await c.close();
   });
 

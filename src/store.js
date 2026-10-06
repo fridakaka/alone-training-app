@@ -35,9 +35,17 @@ export function loadState(storage = globalThis.localStorage) {
   return migrateFromV1(storage);
 }
 
+// Optional extra copy (the iOS app mirrors every save to durable native storage).
+let persistHook = null;
+export function setPersistHook(fn) {
+  persistHook = typeof fn === 'function' ? fn : null;
+}
+
 export function saveState(state, storage = globalThis.localStorage) {
   try {
-    storage.setItem(KEY, JSON.stringify(state));
+    const json = JSON.stringify(state);
+    storage.setItem(KEY, json);
+    if (persistHook) persistHook(KEY, json);
     return true;
   } catch {
     return false;

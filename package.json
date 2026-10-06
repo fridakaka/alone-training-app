@@ -1,6 +1,6 @@
 {
   "name": "alone-training-app",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "description": "A calm, mobile-first dog alone-training tracker.",
@@ -8,9 +8,24 @@
     "start": "node scripts/serve.mjs",
     "test": "node --test \"tests/unit/*.test.js\"",
     "test:e2e": "node tests/e2e/run.mjs",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "build:www": "node scripts/build-www.mjs",
+    "ios:sync": "node scripts/build-www.mjs && npx cap sync ios && node scripts/ios-setup.mjs",
+    "ios:open": "npx cap open ios",
+    "ios:setup": "node scripts/ios-setup.mjs",
+    "ios:widget": "node scripts/ios-install-widget.mjs",
+    "ios:assets": "node scripts/make-ios-assets.mjs"
   },
   "devDependencies": {
-    "playwright-core": "^1.55.0"
+    "@capacitor/cli": "^8.5.2",
+    "playwright-core": "^1.55.0",
+    "xcode": "^3.0.1"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/filesystem": "^8.1.4",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/share": "^8.0.3"
   }
 }

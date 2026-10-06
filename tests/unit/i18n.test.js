@@ -48,3 +48,23 @@ test('user text inserted into HTML strings is escaped', () => {
   assert.equal(escapeHtml('<b>"x" & \'y\''), '&lt;b&gt;&quot;x&quot; &amp; &#39;y&#39;');
   assert.ok(!tHtml('helpCalc1', { places: '<img src=x>' }).includes('<img'));
 });
+
+// ---------- v0.8: offer default names after a language switch ----------
+import { defaultNameOffer } from '../../src/i18n.js';
+
+test('switching to Swedish offers Swedish names only for untouched English defaults', () => {
+  const ctx = (home, car, shop) => [{ id: 'home', name: home }, { id: 'car', name: car }, { id: 'outside-shop', name: shop }];
+  assert.deepEqual(defaultNameOffer(ctx('Home', 'Car', 'Outside shop'), 'sv'), [
+    { id: 'home', from: 'Home', to: 'Hemma' },
+    { id: 'car', from: 'Car', to: 'Bilen' },
+    { id: 'outside-shop', from: 'Outside shop', to: 'Utanför affären' },
+  ]);
+  // Own names are never offered for change.
+  assert.deepEqual(defaultNameOffer(ctx('Sovrummet', 'Bilburen', 'Hallen'), 'sv'), []);
+  assert.deepEqual(defaultNameOffer(ctx('Home', 'Bilburen', 'Outside shop'), 'sv').map((o) => o.id), ['home', 'outside-shop']);
+  // Already Swedish, or switching to English with Swedish defaults.
+  assert.deepEqual(defaultNameOffer(ctx('Hemma', 'Bilen', 'Utanför affären'), 'sv'), []);
+  assert.deepEqual(defaultNameOffer(ctx('Hemma', 'Bilen', 'Utanför affären'), 'en').map((o) => o.to), ['Home', 'Car', 'Outside shop']);
+  // A default name of another place id doesn't count ("Car" used for home).
+  assert.deepEqual(defaultNameOffer(ctx('Car', 'Home', 'Outside shop'), 'sv').map((o) => o.id), ['outside-shop']);
+});

@@ -1,0 +1,9 @@
+{
+  "appId": "se.fridakaka.alonetime",
+  "appName": "Alone Time",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#FAF7F2"
+  }
+}

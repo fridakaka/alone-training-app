@@ -30,12 +30,14 @@ import { renderChart, resultText, MAX_BARS } from './chart.js';
 import { stepUp, stepDown, formatTarget, MIN_TARGET_SEC } from './progression.js';
 import { suggestTarget, KINDS } from './suggestion.js';
 import {
-  buildBackup, parseBackup, mergeSessions, buildCsv, backupFileName, settingsChanges,
+  buildBackup, parseBackup, mergeSessions, buildCsv, backupFileName, importSummary,
 } from './backup.js';
 import {
   t, tHtml, setLang, getLang, locale, formatDuration, listNames, escapeHtml, guessLang,
-  LANGS, LANG_NAMES, DEFAULT_PLACE_NAMES,
+  LANGS, LANG_NAMES, DEFAULT_PLACE_NAMES, defaultNameOffer,
 } from './i18n.js';
+import { isNativeApp, startLiveActivity, endLiveActivity, shareFileNative } from './native.js';
+import { liveActivityPayload, liveActivityStep } from './liveActivity.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -132,9 +134,49 @@ function placeError(code) {
 document.querySelectorAll('[data-banner-lang]').forEach((b) =>
   b.addEventListener('click', () => {
     setLang(b.dataset.bannerLang);
+    offerDefaultNames(getLang());
     update({ ...state, lang: getLang() });
   }),
 );
+
+// ---------- default place names after a language switch (offer only) ----------
+
+let namesOffer = [];
+
+function offerDefaultNames(lang) {
+  namesOffer = defaultNameOffer(state.contexts, lang);
+}
+
+$('names-offer-apply').addEventListener('click', () => {
+  const names = Object.fromEntries(state.contexts.map((c) => [c.id, c.name]));
+  for (const o of namesOffer) names[o.id] = o.to;
+  namesOffer = [];
+  update(renameContexts(state, names));
+});
+
+$('names-offer-keep').addEventListener('click', () => {
+  namesOffer = [];
+  render();
+});
+
+// ---------- iOS Live Activity ----------
+// Started with a session, ended when the session ends or is discarded; restored or cleaned
+// up when the app opens. Does nothing in the PWA.
+
+let liveSent = 'unknown';
+
+function syncLiveActivity() {
+  if (!isNativeApp()) return;
+  const payload = liveActivityPayload(state);
+  const step = liveActivityStep(liveSent, payload);
+  if (step.action === 'start') {
+    liveSent = payload;
+    startLiveActivity(payload);
+  } else if (step.action === 'end') {
+    liveSent = null;
+    endLiveActivity();
+  }
+}
 
 // ---------- actions ----------
 
@@ -332,6 +374,7 @@ let lastMode = null;
 
 function render() {
   if (appliedLang !== getLang()) applyStaticText();
+  syncLiveActivity();
 
   // First start: only the welcome screen.
   const welcome = !state.onboarded;
@@ -353,6 +396,12 @@ function render() {
   $('view-training').hidden = mode !== 'training';
   $('view-result').hidden = mode !== 'result';
   $('lang-banner').hidden = !(state.lang == null && mode === 'ready' && !askOnset);
+  // Keep the offer only for places that still have the offered default name's counterpart.
+  namesOffer = namesOffer.filter((o) => state.contexts.find((c) => c.id === o.id)?.name === o.from);
+  $('names-offer').hidden = !(namesOffer.length && mode === 'ready' && !askOnset);
+  $('names-offer-text').textContent = namesOffer.length
+    ? t('namesOfferText', { list: namesOffer.map((o) => `${o.from} → ${o.to}`).join(', ') })
+    : '';
   document.body.dataset.mode = mode;
 
   $('dog-name').textContent = dogName();
@@ -467,7 +516,10 @@ $('settings-form').addEventListener('submit', (e) => {
   // Only labels and the interface language change. Ids, sessions and suggestions stay.
   // A language switch never renames places – the names are the user's own text.
   let next = renameContexts(renameDog(state, $('settings-dog').value), names);
-  if (LANGS.includes(lang) && (lang !== state.lang)) next = { ...next, lang };
+  if (LANGS.includes(lang) && (lang !== state.lang)) {
+    next = { ...next, lang };
+    namesOffer = defaultNameOffer(next.contexts, lang);
+  }
   const changed = JSON.stringify([next.dogs, next.contexts, next.lang]) !== JSON.stringify([state.dogs, state.contexts, state.lang]);
   setLang(next.lang ?? getLang());
   update(next);
@@ -730,6 +782,15 @@ dialog.addEventListener('click', (e) => {
 // ---------- backup / export / restore ----------
 
 async function shareOrDownload(text, fileName, type) {
+  // iOS app: write the file and open the share sheet ("Save to Files", AirDrop, mail …).
+  if (isNativeApp()) {
+    try {
+      return await shareFileNative(fileName, text);
+    } catch {
+      status(t('dataReadError'));
+      return false;
+    }
+  }
   const file = new File([text], fileName, { type });
   const touch = matchMedia('(pointer: coarse)').matches;
   if (touch && navigator.canShare?.({ files: [file] })) {
@@ -767,69 +828,128 @@ $('csv-btn').addEventListener('click', async () => {
   }
 });
 
-$('restore-input').addEventListener('change', async (e) => {
-  const file = e.target.files?.[0];
-  e.target.value = '';
-  if (!file) return;
+// ---------- import a backup: always a review first, nothing changes before "Import" ----------
+
+const importDialog = $('import-dialog');
+let pendingImport = null; // { parsed, mode: 'restore' | 'welcome' }
+
+async function readBackupFile(input) {
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return null;
   status(t('dataReading'));
   try {
     const parsed = parseBackup(await file.text());
-    try {
-      localStorage.setItem(`alone-training:before-restore-${Date.now()}`, JSON.stringify(state));
-    } catch {}
-    const { state: merged, added, skipped } = mergeSessions(state, parsed.sessions);
-    update(merged);
-    status(
-      added
-        ? (added === 1 ? t('dataRestoredOne') : t('dataRestoredMany', { n: added })) +
-            (skipped ? t('dataSkipped', { n: skipped }) : '')
-        : t('dataNothingNew'),
-    );
-    offerBackupSettings(parsed);
+    status('');
+    return parsed;
   } catch (err) {
-    status(err?.code === 'not-backup' ? t('dataNotBackup') : t('dataReadError'));
+    const msg = err?.code === 'not-backup' ? t('dataNotBackup') : t('dataReadError');
+    status(msg);
+    $('welcome-error').textContent = state.onboarded ? '' : msg;
+    return null;
   }
-});
-
-// Restoring never changes dog name, language or place names by itself. If the backup
-// has other values, show them and let the user choose. Backups without them change nothing.
-let pendingBackup = null;
-
-function offerBackupSettings(parsed) {
-  const changes = settingsChanges(state, parsed);
-  pendingBackup = changes.length ? parsed : null;
-  $('restore-names').hidden = !changes.length;
-  $('restore-names-text').textContent = changes.length
-    ? t('restoreDiffers', {
-        list: changes
-          .map((c) =>
-            c.kind === 'dog'
-              ? t('restoreItemDog', { from: c.fromBackup, current: c.current })
-              : c.kind === 'lang'
-                ? t('restoreItemLang', { from: LANG_NAMES[c.fromBackup], current: LANG_NAMES[c.current] })
-                : t('restoreItemPlace', { from: c.fromBackup, current: c.current }),
-          )
-          .join(', '),
-      })
-    : '';
 }
 
-$('restore-names-apply').addEventListener('click', () => {
-  if (pendingBackup) {
-    let next = state;
-    if (pendingBackup.dogName) next = renameDog(next, pendingBackup.dogName);
-    if (pendingBackup.contextNames) next = renameContexts(next, pendingBackup.contextNames);
-    if (pendingBackup.lang && state.lang) next = { ...next, lang: pendingBackup.lang };
-    setLang(next.lang ?? getLang());
-    update(next);
-  }
-  offerBackupSettings(null);
-  status(t('restoreApplied'));
+$('restore-input').addEventListener('change', async (e) => {
+  const parsed = await readBackupFile(e.target);
+  if (parsed) openImport(parsed, 'restore');
 });
 
-$('restore-names-keep').addEventListener('click', () => {
-  offerBackupSettings(null);
-  status(t('restoreKept'));
+$('welcome-import-input').addEventListener('change', async (e) => {
+  const parsed = await readBackupFile(e.target);
+  if (parsed) openImport(parsed, 'welcome');
+});
+
+const dateOnly = (ms) => new Date(ms).toLocaleDateString(locale(), { day: 'numeric', month: 'short', year: 'numeric' });
+
+function openImport(parsed, mode) {
+  pendingImport = { parsed, mode };
+  const sum = importSummary(state, parsed);
+  const items = [];
+  items.push(sum.newCount === 0 ? t('importNone') : sum.newCount === 1 ? t('importNewOne') : t('importNewMany', { n: sum.newCount }));
+  if (sum.newCount) items.push(t('importPeriod', { from: dateOnly(sum.firstAt), to: dateOnly(sum.lastAt) }));
+  if (sum.commentCount) items.push(t('importComments', { n: sum.commentCount }));
+  if (sum.existingCount) items.push(t('importExisting', { n: sum.existingCount }));
+  $('import-summary').replaceChildren(...items.map((x) => Object.assign(document.createElement('li'), { textContent: x })));
+
+  // Settings: on a brand-new phone they are simply taken from the backup (nothing to overwrite);
+  // otherwise the differences are listed and only used if the user ticks the box.
+  const box = $('import-settings');
+  if (mode === 'welcome') {
+    const names = parsed.contextNames ? Object.values(parsed.contextNames) : null;
+    const show = parsed.dogName || parsed.lang || names;
+    box.hidden = !show;
+    $('import-settings-text').textContent = show
+      ? t('importSettingsNew', {
+          dog: parsed.dogName ?? state.dogs[0].name,
+          lang: LANG_NAMES[parsed.lang ?? welcomeLang],
+          places: listNames(names ?? Object.values(DEFAULT_PLACE_NAMES[parsed.lang ?? welcomeLang])),
+        })
+      : '';
+    $('import-use-settings-field').hidden = true;
+    $('import-use-settings').checked = true;
+  } else {
+    box.hidden = !sum.changes.length;
+    $('import-use-settings-field').hidden = false;
+    $('import-use-settings').checked = false;
+    $('import-settings-text').textContent = sum.changes.length
+      ? t('importSettingsDiffer', {
+          list: sum.changes
+            .map((c) =>
+              c.kind === 'dog'
+                ? t('restoreItemDog', { from: c.fromBackup, current: c.current })
+                : c.kind === 'lang'
+                  ? t('restoreItemLang', { from: LANG_NAMES[c.fromBackup], current: LANG_NAMES[c.current] })
+                  : t('restoreItemPlace', { from: c.fromBackup, current: c.current }),
+            )
+            .join(', '),
+        })
+      : '';
+  }
+  importDialog.showModal();
+}
+
+$('import-cancel').addEventListener('click', () => {
+  pendingImport = null;
+  importDialog.close();
+  status(t('importCancelled'));
+});
+
+$('import-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!pendingImport) return importDialog.close();
+  const { parsed, mode } = pendingImport;
+  const useSettings = $('import-use-settings').checked;
+  pendingImport = null;
+  try {
+    localStorage.setItem(`alone-training:before-restore-${Date.now()}`, JSON.stringify(state));
+  } catch {}
+  let next = mergeSessions(state, parsed.sessions);
+  const { added, skipped } = next;
+  next = next.state;
+  if (mode === 'welcome') {
+    const lang = parsed.lang ?? welcomeLang;
+    next = completeOnboarding(next, {
+      lang,
+      dogName: parsed.dogName ?? next.dogs[0].name,
+      placeNames: parsed.contextNames ?? DEFAULT_PLACE_NAMES[lang],
+    });
+    setLang(lang);
+  } else if (useSettings) {
+    if (parsed.dogName) next = renameDog(next, parsed.dogName);
+    if (parsed.contextNames) next = renameContexts(next, parsed.contextNames);
+    if (parsed.lang && next.lang) {
+      next = { ...next, lang: parsed.lang };
+      setLang(parsed.lang);
+    }
+  }
+  importDialog.close();
+  update(next);
+  status(
+    (added
+      ? (added === 1 ? t('dataRestoredOne') : t('dataRestoredMany', { n: added })) + (skipped ? t('dataSkipped', { n: skipped }) : '')
+      : t('dataNothingNew')) + (mode === 'restore' && useSettings ? ` ${t('importSettingsApplied')}` : ''),
+  );
 });
 
 // Timer catches up instantly when you come back to the app.

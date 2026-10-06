@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.7)
+# Alone Time – dog alone-training tracker (v0.8)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -26,6 +26,17 @@ or train without a target.
 
 Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
 The app is a training journal – not advice, and it can't tell how long a dog can be alone.
+
+## iPhone app (prototype, v0.8)
+
+A small iOS app built from the same code with Capacitor: works offline, stores data in iOS
+storage, and shows a real **Live Activity** (lock screen + Dynamic Island) with the running timer.
+Step-by-step guide in Swedish: [docs/IOS.md](docs/IOS.md). The PWA keeps working as before.
+
+- Importing a backup now always shows a review first (sessions to add, settings that differ);
+  nothing changes before *Import*. New phones can import from the welcome screen.
+- Switching language offers the other language's default place names – only for places that
+  still have an untouched default name (Home → Hemma). Own names are never changed.
 
 ## Dog name, language, introduction, comments (v0.7)
 
@@ -103,6 +114,8 @@ See [docs/PLAN.md](docs/PLAN.md) for the plain-language explanation and
 | `src/chart.js` | Draws the graph |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Make it installable and work offline |
 | `src/i18n.js` | All interface text, English and Swedish |
+| `src/boot.js`, `src/native.js`, `src/liveActivity.js` | iOS app: native storage, Live Activity, files (no effect in the PWA) |
+| `native/ios/`, `ios/` | Swift code for the Live Activity, and the Capacitor iOS project |
 
 ## For development
 
