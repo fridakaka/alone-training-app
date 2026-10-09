@@ -28,8 +28,19 @@ Flytta den med en säkerhetskopia – se steg 9.
 Öppna Alone Time från hemskärmen → **Dina data → Spara säkerhetskopia** → **Spara i Filer** (t.ex. iCloud Drive).
 
 ### 2. Hämta koden på Macen
-Öppna **Terminal** och skriv (en rad i taget):
+**Först (en gång): installera Node.js.** Det är Node.js som ger kommandot `npm`.
+Gå till **nodejs.org**, ladda ner **LTS**-versionen (*macOS Installer, .pkg*) och installera den.
+**Stäng Terminal helt (⌘Q) och öppna den igen.** Kontrollera sedan:
 ```
+node -v
+npm -v
+```
+Båda ska svara med ett versionsnummer. Står det `command not found: npm` är Node.js inte installerat ännu.
+
+Öppna **Terminal** och skriv (en rad i taget). Kör `git clone` bara **en** gång – står du redan
+i en mapp som heter `alone-training-app`, hoppa över de två första raderna.
+```
+cd ~
 git clone https://github.com/fridakaka/alone-training-app.git
 cd alone-training-app
 git checkout claude/blissful-brahmagupta-xlov33
@@ -100,6 +111,7 @@ npm run ios:sync
 Tryck ▶︎ i Xcode. Dina data finns kvar (installera ovanpå, radera inte appen).
 
 ## Om något går fel
+- **`zsh: command not found: npm`**: Node.js saknas – se början av steg 2. Glöm inte att starta om Terminal efter installationen.
 - **"ios/App/AloneTimeWidget was not found"** i steg 5: tillägget heter inte exakt `AloneTimeWidget`, eller steg 4 är inte gjort.
 - **Fel om "AloneTimeActivityAttributes" i Xcode**: kör `npm run ios:widget` igen och sedan **Product → Clean Build Folder**.
 - **Fel om paket (Capacitor)**: **File → Packages → Reset Package Caches**, sedan ▶︎ igen.
