@@ -24,125 +24,163 @@
 <body>
   <main class="app" id="app">
     <header class="top">
-      <p class="eyebrow" data-i18n="appEyebrow">Alone training</p>
-      <h1><span id="dog-name">Charlie</span> <span class="dot">·</span> <span id="context-name" class="muted">Home</span></h1>
+      <div class="top-text">
+        <p class="eyebrow" data-i18n="appEyebrow">Alone training</p>
+        <h1><span id="dog-name">Charlie</span> <span class="dot">·</span> <span id="context-name" class="muted">Home</span></h1>
+      </div>
+      <button id="menu-btn" class="menu-btn" type="button" aria-expanded="false" aria-controls="menu" data-i18n-aria="menuOpen" aria-label="Menu">
+        <span class="burger" aria-hidden="true"><i></i><i></i><i></i></span>
+      </button>
+      <!-- The menu opens separate pages; the main screen keeps only what you need to train. -->
+      <nav id="menu" class="menu" data-i18n-aria="menuAria" aria-label="Menu" hidden>
+        <button type="button" class="menu-item" data-nav="home" data-i18n="navHome">Main screen</button>
+        <button type="button" class="menu-item" data-nav="history" data-i18n="historyTitle">Previous sessions</button>
+        <button type="button" class="menu-item" data-nav="settings" data-i18n="settingsTitle">Settings</button>
+        <button type="button" class="menu-item" data-nav="data" data-i18n="dataTitle">Your data</button>
+        <button type="button" class="menu-item" data-nav="help" data-i18n="helpTitle">Help</button>
+      </nav>
     </header>
 
-    <!-- Existing users who haven't chosen a language yet: one small, optional choice. -->
-    <div id="lang-banner" class="lang-banner" role="group" aria-labelledby="lang-banner-text" hidden>
-      <span id="lang-banner-text">Choose language · Välj språk</span>
-      <div class="chips">
-        <button type="button" class="chip" data-banner-lang="sv">Svenska</button>
-        <button type="button" class="chip" data-banner-lang="en">English</button>
+    <!-- On the other pages while a session is running (or waiting for its result): the session
+         is never lost, and one tap leads back to the timer. -->
+    <button id="live-bar" class="live-bar" type="button" data-nav="home" hidden>
+      <span id="live-bar-text" class="live-bar-text"></span>
+      <span id="live-bar-action" class="live-bar-action"></span>
+    </button>
+
+    <div id="page-home" class="page">
+
+      <!-- Existing users who haven't chosen a language yet: one small, optional choice. -->
+      <div id="lang-banner" class="lang-banner" role="group" aria-labelledby="lang-banner-text" hidden>
+        <span id="lang-banner-text">Choose language · Välj språk</span>
+        <div class="chips">
+          <button type="button" class="chip" data-banner-lang="sv">Svenska</button>
+          <button type="button" class="chip" data-banner-lang="en">English</button>
+        </div>
       </div>
+
+      <!-- After a language switch: offer the new language's names for places that still have
+           another language's untouched default name. Never changes anything by itself. -->
+      <div id="names-offer" class="lang-banner names-offer" role="group" aria-labelledby="names-offer-text" hidden>
+        <span id="names-offer-text"></span>
+        <div class="chips">
+          <button id="names-offer-apply" class="chip chip-strong" type="button" data-i18n="namesOfferApply">Use these names</button>
+          <button id="names-offer-keep" class="chip" type="button" data-i18n="namesOfferKeep">Keep current</button>
+        </div>
+      </div>
+
+      <!-- State 1: ready -->
+      <section id="view-ready" class="panel">
+        <div id="context-picker" class="segmented" role="group" data-i18n-aria="pickerAria" aria-label="Where are you training?">
+          <!-- filled from state.contexts by app.js -->
+        </div>
+
+        <div class="target" aria-live="polite">
+          <p id="target-label" class="target-label">Suggestion today</p>
+          <div class="stepper">
+            <button id="target-down" class="step-btn" type="button" data-i18n-aria="targetShorter" aria-label="Shorter target">−</button>
+            <button id="target-value" class="target-value" type="button" aria-describedby="target-label">No target</button>
+            <button id="target-up" class="step-btn" type="button" data-i18n-aria="targetLonger" aria-label="Longer target">+</button>
+          </div>
+          <div id="target-edit" class="target-edit" role="group" data-i18n-aria="targetTypeGroup" aria-label="Type a target time" hidden>
+            <div class="time-inputs center">
+              <label><input id="target-min" type="number" inputmode="numeric" min="0" max="999" data-i18n-aria="targetMinutesAria" aria-label="Target minutes"> <span data-i18n="unitMin">min</span></label>
+              <label><input id="target-sec" type="number" inputmode="numeric" min="0" max="59" data-i18n-aria="targetSecondsAria" aria-label="Target seconds"> <span data-i18n="unitSec">s</span></label>
+            </div>
+            <p id="target-error" class="form-error" role="alert"></p>
+            <div class="chips">
+              <button id="target-set" class="chip chip-strong" type="button" data-i18n="targetSet">Set time</button>
+              <button id="target-edit-cancel" class="chip" type="button" data-i18n="cancel">Cancel</button>
+            </div>
+          </div>
+          <p id="target-basis" class="target-basis"></p>
+          <div id="target-chips" class="chips"></div>
+          <!-- History only: never today's target, never used to compute it. -->
+          <div id="history-facts" class="history-facts" role="group" aria-labelledby="history-facts-title" hidden>
+            <p id="history-facts-title" class="history-facts-title" data-i18n="historyFacts">History · not today's target</p>
+            <p id="best-good" class="target-history" hidden></p>
+            <p id="earlier-level" class="target-history" hidden></p>
+          </div>
+        </div>
+
+        <button id="start-btn" class="btn btn-primary btn-huge" type="button" data-i18n="start">Start training</button>
+      </section>
+
+      <!-- State 2: training -->
+      <section id="view-training" class="panel" hidden>
+        <p id="training-label" class="label">Charlie has been alone for</p>
+        <div id="timer" class="timer" role="timer" aria-live="off">00:00</div>
+        <p id="training-target" class="training-target" hidden></p>
+        <button id="end-btn" class="btn btn-dark btn-huge" type="button" data-i18n="end">End training</button>
+      </section>
+
+      <!-- State 3: result. The optional comment comes first (write what you saw, then rate);
+           it is saved together with the result. -->
+      <section id="view-result" class="panel" hidden>
+        <p class="label"><span data-i18n="resultFinished">Session finished</span> · <strong id="result-duration"></strong><span id="result-target"></span></p>
+        <label class="comment-field">
+          <span class="comment-label"><span data-i18n="commentLabel">Comment</span> <span class="muted" data-i18n="commentOptional">(optional)</span></span>
+          <textarea id="result-comment" rows="3" maxlength="500" data-i18n-placeholder="commentPlaceholder"></textarea>
+        </label>
+        <h2 class="question" data-i18n="resultQuestion">How did it go?</h2>
+        <div class="choices">
+          <button id="good-btn" class="btn btn-good" type="button" data-i18n="good">Went well</button>
+          <button id="bad-btn" class="btn btn-bad" type="button" data-i18n="bad">Didn't go well</button>
+        </div>
+        <button id="discard-btn" class="btn-link" type="button" data-i18n="discard">Discard this session</button>
+      </section>
+
+      <!-- State 3b: optional follow-up after "Didn't go well" -->
+      <section id="view-onset" class="panel" hidden>
+        <p id="onset-saved" class="label"></p>
+        <h2 id="onset-question" class="question">Roughly when did Charlie start to get worried?</h2>
+        <p class="label small" data-i18n="onsetHint">Optional. Minutes and seconds from the start.</p>
+        <div class="time-inputs center">
+          <label><input id="onset-min" type="number" inputmode="numeric" min="0" max="999" data-i18n-aria="minutesAria" aria-label="Minutes"> <span data-i18n="unitMin">min</span></label>
+          <label><input id="onset-sec" type="number" inputmode="numeric" min="0" max="59" data-i18n-aria="secondsAria" aria-label="Seconds"> <span data-i18n="unitSec">s</span></label>
+        </div>
+        <p id="onset-error" class="form-error" role="alert"></p>
+        <div class="choices">
+          <button id="onset-unknown" class="btn btn-quiet" type="button" data-i18n="onsetUnknown">Don't know</button>
+          <button id="onset-save" class="btn btn-primary" type="button" data-i18n="save">Save</button>
+        </div>
+      </section>
+
+      <section id="progress" class="card" aria-labelledby="progress-title">
+        <div class="card-head">
+          <h2 id="progress-title"><span data-i18n="progressTitle">Progress</span> <span class="dot">·</span> <span id="progress-context" class="muted">Home</span></h2>
+          <div class="legend" aria-hidden="true">
+            <span><i class="swatch good"></i><span data-i18n="good">Went well</span></span>
+            <span><i class="swatch bad"></i><span data-i18n="bad">Didn't go well</span></span>
+            <span id="legend-target"><i class="swatch-target"></i><span data-i18n="legendTarget">Target</span></span>
+          </div>
+        </div>
+        <div id="chart"></div>
+        <p id="chart-detail" class="detail" aria-live="polite"></p>
+        <p id="chart-note" class="chart-note" hidden></p>
+        <p id="empty" class="empty"></p>
+        <button id="prep-link" class="btn-link prep-link" type="button" data-i18n="prepLink" hidden></button>
+        <button id="history-link" class="btn-link history-link" type="button" data-nav="history" hidden></button>
+      </section>
     </div>
 
-    <!-- After a language switch: offer the new language's names for places that still have
-         another language's untouched default name. Never changes anything by itself. -->
-    <div id="names-offer" class="lang-banner names-offer" role="group" aria-labelledby="names-offer-text" hidden>
-      <span id="names-offer-text"></span>
-      <div class="chips">
-        <button id="names-offer-apply" class="chip chip-strong" type="button" data-i18n="namesOfferApply">Use these names</button>
-        <button id="names-offer-keep" class="chip" type="button" data-i18n="namesOfferKeep">Keep current</button>
-      </div>
-    </div>
-
-    <!-- State 1: ready -->
-    <section id="view-ready" class="panel">
-      <div id="context-picker" class="segmented" role="group" data-i18n-aria="pickerAria" aria-label="Where are you training?">
-        <!-- filled from state.contexts by app.js -->
-      </div>
-
-      <div class="target" aria-live="polite">
-        <p id="target-label" class="target-label">Suggestion today</p>
-        <div class="stepper">
-          <button id="target-down" class="step-btn" type="button" data-i18n-aria="targetShorter" aria-label="Shorter target">−</button>
-          <button id="target-value" class="target-value" type="button" aria-describedby="target-label">No target</button>
-          <button id="target-up" class="step-btn" type="button" data-i18n-aria="targetLonger" aria-label="Longer target">+</button>
-        </div>
-        <div id="target-edit" class="target-edit" role="group" data-i18n-aria="targetTypeGroup" aria-label="Type a target time" hidden>
-          <div class="time-inputs center">
-            <label><input id="target-min" type="number" inputmode="numeric" min="0" max="999" data-i18n-aria="targetMinutesAria" aria-label="Target minutes"> <span data-i18n="unitMin">min</span></label>
-            <label><input id="target-sec" type="number" inputmode="numeric" min="0" max="59" data-i18n-aria="targetSecondsAria" aria-label="Target seconds"> <span data-i18n="unitSec">s</span></label>
-          </div>
-          <p id="target-error" class="form-error" role="alert"></p>
-          <div class="chips">
-            <button id="target-set" class="chip chip-strong" type="button" data-i18n="targetSet">Set time</button>
-            <button id="target-edit-cancel" class="chip" type="button" data-i18n="cancel">Cancel</button>
-          </div>
-        </div>
-        <p id="target-basis" class="target-basis"></p>
-        <p id="earlier-level" class="target-history" hidden></p>
-        <div id="target-chips" class="chips"></div>
-      </div>
-
-      <button id="start-btn" class="btn btn-primary btn-huge" type="button" data-i18n="start">Start training</button>
-    </section>
-
-    <!-- State 2: training -->
-    <section id="view-training" class="panel" hidden>
-      <p id="training-label" class="label">Charlie has been alone for</p>
-      <div id="timer" class="timer" role="timer" aria-live="off">00:00</div>
-      <p id="training-target" class="training-target" hidden></p>
-      <button id="end-btn" class="btn btn-dark btn-huge" type="button" data-i18n="end">End training</button>
-    </section>
-
-    <!-- State 3: result. The comment is optional and saved together with the result. -->
-    <section id="view-result" class="panel" hidden>
-      <p class="label"><span data-i18n="resultFinished">Session finished</span> · <strong id="result-duration"></strong><span id="result-target"></span></p>
-      <h2 class="question" data-i18n="resultQuestion">How did it go?</h2>
-      <div class="choices">
-        <button id="good-btn" class="btn btn-good" type="button" data-i18n="good">Went well</button>
-        <button id="bad-btn" class="btn btn-bad" type="button" data-i18n="bad">Didn't go well</button>
-      </div>
-      <label class="comment-field">
-        <span class="comment-label"><span data-i18n="commentLabel">Comment</span> <span class="muted" data-i18n="commentOptional">(optional)</span></span>
-        <textarea id="result-comment" rows="2" maxlength="500" data-i18n-placeholder="commentPlaceholder"></textarea>
-      </label>
-      <button id="discard-btn" class="btn-link" type="button" data-i18n="discard">Discard this session</button>
-    </section>
-
-    <!-- State 3b: optional follow-up after "Didn't go well" -->
-    <section id="view-onset" class="panel" hidden>
-      <p id="onset-saved" class="label"></p>
-      <h2 id="onset-question" class="question">Roughly when did Charlie start to get worried?</h2>
-      <p class="label small" data-i18n="onsetHint">Optional. Minutes and seconds from the start.</p>
-      <div class="time-inputs center">
-        <label><input id="onset-min" type="number" inputmode="numeric" min="0" max="999" data-i18n-aria="minutesAria" aria-label="Minutes"> <span data-i18n="unitMin">min</span></label>
-        <label><input id="onset-sec" type="number" inputmode="numeric" min="0" max="59" data-i18n-aria="secondsAria" aria-label="Seconds"> <span data-i18n="unitSec">s</span></label>
-      </div>
-      <p id="onset-error" class="form-error" role="alert"></p>
-      <div class="choices">
-        <button id="onset-unknown" class="btn btn-quiet" type="button" data-i18n="onsetUnknown">Don't know</button>
-        <button id="onset-save" class="btn btn-primary" type="button" data-i18n="save">Save</button>
+    <!-- ---------- separate pages, opened from the menu ---------- -->
+    <section id="page-history" class="page" aria-labelledby="history-title" hidden>
+      <button type="button" class="back-btn" data-nav="home"><span aria-hidden="true">‹</span> <span data-i18n="back">Back</span></button>
+      <div class="card">
+        <h2 id="history-title" class="page-title" tabindex="-1" data-i18n="historyTitle">Previous sessions</h2>
+        <div id="history-picker" class="segmented" role="group" data-i18n-aria="historyPickerAria" aria-label="Show sessions for"></div>
+        <p id="history-hint" class="hint" data-i18n="historyHint">Tap a session to read, edit or delete it.</p>
+        <p id="history-empty" class="empty" hidden></p>
+        <ol id="history" class="history"></ol>
+        <button id="history-more" class="btn-link" type="button" hidden></button>
       </div>
     </section>
 
-    <section id="progress" class="card" aria-labelledby="progress-title">
-      <div class="card-head">
-        <h2 id="progress-title"><span data-i18n="progressTitle">Progress</span> <span class="dot">·</span> <span id="progress-context" class="muted">Home</span></h2>
-        <div class="legend" aria-hidden="true">
-          <span><i class="swatch good"></i><span data-i18n="good">Went well</span></span>
-          <span><i class="swatch bad"></i><span data-i18n="bad">Didn't go well</span></span>
-          <span id="legend-target"><i class="swatch-target"></i><span data-i18n="legendTarget">Target</span></span>
-        </div>
-      </div>
-      <div id="chart"></div>
-      <p id="chart-detail" class="detail" aria-live="polite"></p>
-      <p id="chart-note" class="chart-note" hidden></p>
-      <p id="empty" class="empty"></p>
-    </section>
-
-    <section id="history-section" class="card" aria-labelledby="history-title" hidden>
-      <h2 id="history-title"><span data-i18n="historyTitle">Previous sessions</span> <span class="dot">·</span> <span id="history-context" class="muted">Home</span></h2>
-      <p class="hint" data-i18n="historyHint">Tap a session to edit or delete it.</p>
-      <ol id="history" class="history"></ol>
-      <button id="history-more" class="btn-link" type="button" hidden></button>
-    </section>
-
-    <section id="settings-section" class="card" aria-labelledby="settings-title">
-      <details id="settings-details" class="settings">
-        <summary><h2 id="settings-title" data-i18n="settingsTitle">Settings</h2><span class="summary-action" data-i18n="settingsEdit">Edit</span></summary>
+    <section id="page-settings" class="page" aria-labelledby="settings-title" hidden>
+      <button type="button" class="back-btn" data-nav="home"><span aria-hidden="true">‹</span> <span data-i18n="back">Back</span></button>
+      <div class="card">
+        <h2 id="settings-title" class="page-title" tabindex="-1" data-i18n="settingsTitle">Settings</h2>
         <p class="hint" data-i18n="settingsHint">Change your dog's name, the language and the three place names.</p>
         <form id="settings-form" novalidate>
           <label class="place-field">
@@ -164,44 +202,59 @@
             <button id="settings-save" type="submit" class="btn btn-primary" data-i18n="settingsSave">Save settings</button>
           </div>
         </form>
-      </details>
-      <p id="settings-status" class="data-status" role="status"></p>
-    </section>
-
-    <section id="data-section" class="card" aria-labelledby="data-title">
-      <h2 id="data-title" data-i18n="dataTitle">Your data</h2>
-      <p class="hint"><span data-i18n="dataHint">Stored only on this phone. Save a backup now and then.</span>
-        <span id="last-backup"></span></p>
-      <div class="data-actions">
-        <button id="backup-btn" class="btn btn-quiet" type="button" data-i18n="dataBackup">Save backup</button>
-        <button id="csv-btn" class="btn btn-quiet" type="button" data-i18n="dataCsv">Export for Excel</button>
-        <label class="btn btn-quiet file-btn"><span data-i18n="dataRestore">Restore from backup</span>
-          <input id="restore-input" type="file" accept=".json,application/json">
-        </label>
+        <p id="settings-status" class="data-status" role="status"></p>
       </div>
-      <p id="data-status" class="data-status" role="status"></p>
     </section>
 
-    <section id="help-section" class="card" aria-labelledby="help-title">
-      <h2 id="help-title" data-i18n="helpTitle">Help</h2>
-      <details id="help-intro" class="help">
-        <summary data-i18n="helpIntroSummary">About Alone Time</summary>
-        <div id="help-intro-body" class="intro"><!-- same text as the welcome screen --></div>
-      </details>
-      <details id="help-calc" class="help">
-        <summary data-i18n="helpCalcSummary">How is the time suggestion calculated?</summary>
-        <p data-i18n="helpCalcLead"></p>
-        <ul>
-          <li id="help-calc-1"></li>
-          <li data-i18n-html="helpCalc2"></li>
-          <li data-i18n-html="helpCalc3"></li>
-          <li data-i18n="helpCalc4"></li>
-          <li data-i18n-html="helpCalc5"></li>
-          <li data-i18n-html="helpCalc6"></li>
-        </ul>
-        <p data-i18n="helpCalcFree"></p>
-        <p class="muted" data-i18n="helpCalcNote"></p>
-      </details>
+    <section id="page-data" class="page" aria-labelledby="data-title" hidden>
+      <button type="button" class="back-btn" data-nav="home"><span aria-hidden="true">‹</span> <span data-i18n="back">Back</span></button>
+      <div id="data-section" class="card">
+        <h2 id="data-title" class="page-title" tabindex="-1" data-i18n="dataTitle">Your data</h2>
+        <p class="hint"><span data-i18n="dataHint">Stored only on this phone. Save a backup now and then.</span>
+          <span id="last-backup"></span></p>
+        <div class="data-actions">
+          <button id="backup-btn" class="btn btn-quiet" type="button" data-i18n="dataBackup">Save backup</button>
+          <button id="csv-btn" class="btn btn-quiet" type="button" data-i18n="dataCsv">Export for Excel</button>
+          <label class="btn btn-quiet file-btn"><span data-i18n="dataRestore">Restore from backup</span>
+            <input id="restore-input" type="file" accept=".json,application/json">
+          </label>
+        </div>
+        <p id="data-status" class="data-status" role="status"></p>
+      </div>
+    </section>
+
+    <section id="page-help" class="page" aria-labelledby="help-title" hidden>
+      <button type="button" class="back-btn" data-nav="home"><span aria-hidden="true">‹</span> <span data-i18n="back">Back</span></button>
+      <div id="help-section" class="card">
+        <h2 id="help-title" class="page-title" tabindex="-1" data-i18n="helpTitle">Help</h2>
+        <details id="help-intro" class="help">
+          <summary data-i18n="helpIntroSummary">About Alone Time</summary>
+          <div id="help-intro-body" class="intro"><!-- same text as the welcome screen --></div>
+        </details>
+        <!-- Optional. Nothing here is saved or counted: no sessions, no chart, no suggestion. -->
+        <details id="help-prep" class="help">
+          <summary data-i18n="prepSummary">Getting ready at home (optional)</summary>
+          <p data-i18n="prepLead"></p>
+          <ul id="prep-list" class="prep-list"><!-- filled from i18n --></ul>
+          <p data-i18n="prepObserve"></p>
+          <p class="muted" data-i18n="prepNote"></p>
+        </details>
+        <details id="help-calc" class="help">
+          <summary data-i18n="helpCalcSummary">How is the time suggestion calculated?</summary>
+          <p data-i18n="helpCalcLead"></p>
+          <ul>
+            <li id="help-calc-1"></li>
+            <li data-i18n-html="helpCalc2"></li>
+            <li data-i18n-html="helpCalc3"></li>
+            <li data-i18n="helpCalc4"></li>
+            <li data-i18n-html="helpCalc5"></li>
+            <li data-i18n-html="helpCalc6"></li>
+            <li data-i18n="helpCalcRecord"></li>
+          </ul>
+          <p data-i18n="helpCalcFree"></p>
+          <p class="muted" data-i18n="helpCalcNote"></p>
+        </details>
+      </div>
     </section>
   </main>
 

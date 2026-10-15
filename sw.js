@@ -1,10 +1,10 @@
 // Makes the app open without internet.
 // Strategy: try the network first (so updates arrive), fall back to the saved copy.
-const CACHE = 'alone-time-v9';
+const CACHE = 'alone-time-v10';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/alone-time-32.png', 'icons/alone-time-180.png', 'icons/alone-time-192.png', 'icons/alone-time-512.png',
-  'src/app.js', 'src/training.js', 'src/store.js', 'src/chart.js', 'src/progression.js', 'src/backup.js', 'src/suggestion.js', 'src/i18n.js', 'src/boot.js', 'src/native.js', 'src/liveActivity.js',
+  'src/app.js', 'src/training.js', 'src/store.js', 'src/chart.js', 'src/progression.js', 'src/backup.js', 'src/suggestion.js', 'src/i18n.js', 'src/boot.js', 'src/native.js', 'src/liveActivity.js', 'src/explain.js',
 ];
 
 self.addEventListener('install', (e) => {

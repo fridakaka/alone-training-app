@@ -32,16 +32,17 @@ The window size (7 days / 5 sessions) is an adjustable product choice, not a bio
    (If sessions exist but are all marked "don't count": "Too little usable recent history …")
 3. **Latest session didn't go well, nothing good since** →
    - worry time known: **80 % of the worry time**, rounded down (always below it);
-     worry within **10 s** → **no positive time**: "Worry from the start. Choose an easier step before the next absence."
+     worry within **10 s** → **no positive time**: "Worry from the start in the latest session. Choose an easier step before the next absence."
    - worry time unknown: the end time is **not** treated as tolerated. If the current window has earlier good
      sessions **clearly shorter** (< 90 %) than the hard one: 80 % of their *supported* time. Otherwise no time.
-     "The last session was hard — shorter suggestion." / "… choose a short, easy time."
+     "The latest session didn't go well — the suggestion is below the time when worry started." /
+     "The latest session didn't go well, so the suggestion is shorter." / "… choose a short, easy time."
 4. **Good sessions since the latest hard session** (or no hard session in the window). Only these count:
    - **Established current level** = the longest time D that ≥ 2 good sessions reached (≥ 90 % of D) on
      **≥ 2 different days**, with recency weight ≥ 1.0.
      - latest session went well at ≥ 90 % of it → **small increase: +10 %, rounded down**
-       ("Several calm sessions on different days — small increase.")
-     - otherwise → the level ("Keep this time until it feels stable.")
+       ("This time went well on different days and the latest session confirmed it — small increase.")
+     - otherwise → the level ("This time went well on different days, but the latest session was shorter — same time again.")
    - **Limited basis** (no established level) → **anchor**: the longest time supported by **≥ 2** good
      sessions (any days). A **single** good session is confirmed by nothing else, so on its own it can
      only anchor its **planned** time (the smaller of plan and actual). Without a plan: **no automatic
@@ -50,6 +51,31 @@ The window size (7 days / 5 sessions) is an adjustable product choice, not a bio
    - While fewer than **2** good sessions have followed a hard session, rule 3 still applies:
      a numeric limit caps the result; **"no time" (worry from the start, or no shorter basis) is also a
      limit** and keeps the suggestion empty until 2 good sessions have followed.
+
+## Explanation texts name the actual reason (v0.9)
+
+`suggestTarget` also returns `hard`: `latest` when the latest session itself didn't go well (rule 3), or
+`recent` when an earlier hard session in the window still limits the suggestion because fewer than 2 good
+sessions have followed it (end of rule 4). The text follows that cause (`src/explain.js`):
+
+| Cause | Example (English / Swedish) |
+|---|---|
+| `latest`, worry time known | "The latest session didn't go well — the suggestion is below the time when worry started." / "Senaste passet gick inte bra – förslaget ligger under tiden då oron började." |
+| `recent`, shorter time | "A recent hard session makes the suggestion shorter." / "Ett nyligt svårt pass gör att förslaget är kortare." |
+| `recent`, no basis | "A recent hard session still limits the suggestion — choose a short, easy time." / "Ett nyligt svårt pass begränsar fortfarande förslaget – välj en kort, lätt tid." |
+| `recent`, worry from the start | "A recent session with worry from the start still limits the suggestion. …" / "Ett nyligt pass med oro från början begränsar fortfarande förslaget. …" |
+
+"Latest" is never used when the latest session went well (tested in both languages). No suggestion →
+the label reads "No automatic target today". When the user sets their own target, the label reads
+"Your own target" and the line below starts with "The app's suggestion today: 5:00." followed by the reason.
+
+## Longest session that went well (history only)
+
+Shown below today's target: the longest session in this place marked *Went well* (not marked
+"don't count"), with its date. It is **one single session** – not the earlier stable level (which needs
+several sessions on different days), never a target, never a floor, and it is not an input to
+`suggestTarget` at all (computed separately in `src/explain.js`; tests check that adding or hiding a
+long record never changes the suggestion). No such session → no line.
 
 ## Extreme values (applies to every path)
 

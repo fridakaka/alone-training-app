@@ -51,24 +51,32 @@ export const KINDS = Object.freeze({
   RAISE: 'raise', // established on different days and just confirmed => small step up
   REPEAT: 'repeat', // established, not confirmed by the latest session => same time
   LIMITED: 'limited', // current basis is thin => repeat a supported, cautious time (or none: user chooses)
-  EASIER: 'easier', // latest session was hard => shorter
-  HARD_CHOOSE: 'hard-choose', // latest session was hard, no basis for a time => user chooses
+  EASIER: 'easier', // a hard session (the latest, or a recent one) => shorter
+  HARD_CHOOSE: 'hard-choose', // a hard session, no basis for a time => user chooses
   WORRIED_AT_ONCE: 'worried-at-once', // worry from the start => no positive time
   BREAK: 'break', // nothing logged in the window => user chooses
   TOO_LITTLE: 'too-little', // logged recently, but nothing usable (e.g. all marked "don't count")
   NONE: 'none', // nothing logged in this context
 });
 
+// Which hard session limits the suggestion (for EASIER / HARD_CHOOSE / WORRIED_AT_ONCE):
+// LATEST – the latest session itself didn't go well;
+// RECENT – an earlier session in the window didn't go well and too few good sessions have
+//          followed it yet, so it still limits the suggestion although the latest one went well.
+export const HARD = Object.freeze({ LATEST: 'latest', RECENT: 'recent' });
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * @param sessions sessions of ONE dog in ONE context (any order)
  * @param options.now current time in ms (inject in tests)
- * @returns {{ kind, sec, level, repeatSec, earlierLevel }}
+ * @returns {{ kind, sec, level, repeatSec, earlierLevel, hard, fromOnset }}
  *   sec          – today's suggested target, or null (the user chooses)
  *   level        – current level established by recent sessions on different days, or null
  *   repeatSec    – the latest good time, for the Repeat button (null when not relevant)
  *   earlierLevel – earlier stable level from before the current window (history only), or null
+ *   hard         – HARD.LATEST / HARD.RECENT when a hard session decides the suggestion, else null
+ *   fromOnset    – true when that limit comes from an entered worry time
  */
 export function suggestTarget(sessions, { now = Date.now(), settings = SUGGESTION_SETTINGS } = {}) {
   const S = settings;
@@ -84,7 +92,10 @@ export function suggestTarget(sessions, { now = Date.now(), settings = SUGGESTIO
     repeatSec = floorNatural(base.lastGood.durationSec);
     if (repeatSec > base.sec * S.REPEAT_MAX_RATIO) repeatSec = null;
   }
-  return { kind: base.kind, sec: base.sec, level: base.level ?? null, repeatSec, earlierLevel };
+  return {
+    kind: base.kind, sec: base.sec, level: base.level ?? null, repeatSec, earlierLevel,
+    hard: base.hard ?? null, fromOnset: base.fromOnset === true,
+  };
 }
 
 function decide(logged, relevant, since, now, S) {
@@ -103,7 +114,7 @@ function decide(logged, relevant, since, now, S) {
   const lastGood = after.length ? after[after.length - 1][0] : null;
 
   // 1. Latest session hard, nothing good since: the difficulty decides.
-  if (hardIdx >= 0 && !after.length) return difficulty(window, w, hardIdx, S);
+  if (hardIdx >= 0 && !after.length) return { ...difficulty(window, w, hardIdx, S), hard: HARD.LATEST };
 
   // 2. Current level from good sessions since then.
   const level = establishedLevel(after, S);
@@ -120,9 +131,9 @@ function decide(logged, relevant, since, now, S) {
   //    "No time" from the hard session (worry from the start, or no shorter basis) is a limit
   //    too – not the absence of one: it stays in force until RECOVERY_SESSIONS good sessions.
   if (hardIdx >= 0 && after.length < S.RECOVERY_SESSIONS) {
-    const hard = difficulty(window, w, hardIdx, S);
+    const hard = { ...difficulty(window, w, hardIdx, S), hard: HARD.RECENT };
     if (hard.sec == null) return { ...hard, lastGood };
-    if (out.sec == null || out.sec > hard.sec) out = { kind: KINDS.EASIER, sec: hard.sec };
+    if (out.sec == null || out.sec > hard.sec) out = hard;
   }
   return { ...out, lastGood };
 }
@@ -203,8 +214,8 @@ function difficulty(window, w, i, S) {
   if (Number.isFinite(hard.anxietyOnsetSec)) {
     // Known worry time: stay below it. The end time is never used as a tolerated time.
     const below = floorNatural(hard.anxietyOnsetSec * S.BELOW_ONSET_RATIO);
-    if (hard.anxietyOnsetSec < S.IMMEDIATE_ONSET_SEC || below < 1) return { kind: KINDS.WORRIED_AT_ONCE, sec: null };
-    return { kind: KINDS.EASIER, sec: below };
+    if (hard.anxietyOnsetSec < S.IMMEDIATE_ONSET_SEC || below < 1) return { kind: KINDS.WORRIED_AT_ONCE, sec: null, fromOnset: true };
+    return { kind: KINDS.EASIER, sec: below, fromOnset: true };
   }
   // Unknown worry time: an earlier, clearly shorter time that went well (in the current
   // window, before the hard session), used cautiously – or the user chooses.

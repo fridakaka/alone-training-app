@@ -103,12 +103,27 @@ Syns ingen Live Activity: **Inställningar → Alone Time → Live-aktiviteter**
 
 ## Uppdatera appen senare
 ```
-cd alone-training-app
+cd ~/alone-training-app
 git pull
 npm install
 npm run ios:sync
 ```
 Tryck ▶︎ i Xcode. Dina data finns kvar (installera ovanpå, radera inte appen).
+`npm run ios:sync` är steget som lägger in den nya webbkoden i iPhone-appen – utan det kör
+appen den gamla versionen. Widget-steget (4–6) behöver inte göras om.
+
+### Kontrollera på iPhone efter v0.9
+Spara gärna en säkerhetskopia först (**☰ → Dina data → Spara säkerhetskopia**).
+1. Startsidan: hundens namn, spår, förslag, **Starta träning** och grafen – inga långa listor. Menyn **☰** uppe till höger.
+2. **☰ → Tidigare pass / Inställningar / Dina data / Hjälp** öppnas som egna sidor; **‹ Tillbaka** leder till startsidan.
+3. Starta ett pass, lås telefonen en stund, öppna appen och gå till en annan sida via menyn:
+   en grön rad visar tiden och **Tillbaka till timern**. Live Activity på låsskärmen ska fortsätta räkna.
+4. Avsluta: kommentarsrutan ligger **ovanför** Gick bra / Gick inte bra. Skriv något, välj resultat,
+   och kontrollera under **Tidigare pass** att kommentaren finns och går att ändra.
+5. Släng ett pass: det ska inte synas någonstans och Live Activity ska försvinna.
+6. Under tidsförslaget: "Längsta pass som gått bra: …, datum" när det finns ett sådant pass.
+7. **Hjälp → Förberedelser hemma**: bocka i något, gå tillbaka – inget pass har skapats.
+8. Tangentbordet på iPhone: när du skriver i kommentarsrutan ska knapparna gå att nå (scrolla ner).
 
 ## Om något går fel
 - **`zsh: command not found: npm`**: Node.js saknas – se början av steg 2. Glöm inte att starta om Terminal efter installationen.

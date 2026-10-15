@@ -91,3 +91,25 @@ test('iOS project: native files are in the App target, Live Activities enabled, 
   const cfg = JSON.parse(await read('capacitor.config.json'));
   assert.equal(cfg.webDir, 'www');
 });
+
+// ---------- v0.9: the packaged web content stays complete ----------
+import { readdir } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+
+test('the offline cache lists every app module (PWA and the web content inside the iOS app)', async () => {
+  const sw = await readFile(new URL('../../sw.js', import.meta.url), 'utf8');
+  const modules = (await readdir(new URL('../../src/', import.meta.url))).filter((f) => f.endsWith('.js'));
+  for (const f of modules) assert.ok(sw.includes(`'src/${f}'`), `sw.js is missing src/${f}`);
+});
+
+test('build:www copies the current web app (every module, same index.html) for the iOS app', async () => {
+  execFileSync(process.execPath, [new URL('../../scripts/build-www.mjs', import.meta.url).pathname], { stdio: 'ignore' });
+  const root = new URL('../../', import.meta.url);
+  const modules = (await readdir(new URL('src/', root))).filter((f) => f.endsWith('.js'));
+  for (const f of modules) {
+    assert.equal(await readFile(new URL(`www/src/${f}`, root), 'utf8'), await readFile(new URL(`src/${f}`, root), 'utf8'), f);
+  }
+  assert.equal(await readFile(new URL('www/index.html', root), 'utf8'), await readFile(new URL('index.html', root), 'utf8'));
+  const pkg = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
+  assert.equal(JSON.parse(await readFile(new URL('www/build.json', root), 'utf8')).version, pkg.version);
+});

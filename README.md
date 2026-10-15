@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.8)
+# Alone Time – dog alone-training tracker (v0.9)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -9,9 +9,9 @@ place, target and actual duration, and result. Each place has its own graph, his
 suggested next duration.
 
 <p>
-<img src="docs/screenshots/9-shorter.png" width="220" alt="Time suggestion after a hard session">
-<img src="docs/screenshots/14-after-break.png" width="220" alt="After a break: no automatic time">
-<img src="docs/screenshots/12-worry-question.png" width="220" alt="When did worry start?">
+<img src="docs/screenshots/28-home-sv.png" width="220" alt="Main screen: today's suggestion, its reason, and the longest good session as history">
+<img src="docs/screenshots/26-menu-sv.png" width="220" alt="Menu during a running session">
+<img src="docs/screenshots/27-result-comment-first-sv.png" width="220" alt="Result screen: comment first, then the result">
 </p>
 
 ## Time suggestion
@@ -26,6 +26,25 @@ or train without a target.
 
 Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
 The app is a training journal – not advice, and it can't tell how long a dog can be alone.
+
+## Shorter main screen, menu, honest suggestion texts (v0.9)
+
+- **Main screen**: dog, place, today's suggestion, Start training and the progress chart – nothing
+  else. The **☰ menu** opens separate pages: *Previous sessions* (per place: read, edit, delete),
+  *Settings*, *Your data* and *Help*, each with a *Back* button (the phone's back gesture works too).
+  A running session is never touched by navigation: on another page a bar shows the running
+  time and leads back to the timer (or to the waiting result).
+- **Result screen**: the optional comment comes **before** *Went well* / *Didn't go well*.
+- **Suggestion texts name the actual reason**: "The latest session didn't go well …" only when it
+  really was the latest; an earlier hard session that still limits the suggestion is "a recent hard
+  session". A target the user sets is labelled *Your own target*, with the app's suggestion shown
+  next to it. No automatic target → "No automatic target today".
+- **Longest session that went well** (with its date) is shown below today's target as history –
+  one single session, never a target, never used by the calculation (tested). It is a different thing
+  from the *earlier stable level*, which needs several sessions.
+- **Help → Getting ready at home (optional)**: a few example exercises with tick boxes for the
+  moment. Nothing is saved or counted (no sessions, chart, history or suggestion).
+- The iOS app gets the same changes after `npm run ios:sync` (see docs/IOS.md).
 
 ## iPhone app (prototype, v0.8)
 
@@ -108,6 +127,7 @@ See [docs/PLAN.md](docs/PLAN.md) for the plain-language explanation and
 | `src/app.js` | Connects buttons to logic and redraws the screen |
 | `src/training.js` | The rules: start, end, rate, places, durations (no screen code) |
 | `src/suggestion.js` | Time suggestion model (see docs/SUGGESTION-MODEL.md) |
+| `src/explain.js` | Which reason text to show, and the longest good session (history only) |
 | `src/progression.js` | Rounding, −/+ steps and time formatting |
 | `src/backup.js` | Backup file, restore (merge) and Excel export |
 | `src/store.js` | Saves/loads data on the phone, upgrades v0.1 data |
@@ -135,4 +155,4 @@ v0.1 sessions into **Home**. The original v0.1 data is left untouched on the pho
 
 ## Not built yet (on purpose)
 
-Multiple dogs, notes, automatic cloud backup.
+Multiple dogs, automatic cloud backup, a "mixed" result.

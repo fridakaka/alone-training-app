@@ -28,7 +28,8 @@ import {
 import { loadState, saveState } from './store.js';
 import { renderChart, resultText, MAX_BARS } from './chart.js';
 import { stepUp, stepDown, formatTarget, MIN_TARGET_SEC } from './progression.js';
-import { suggestTarget, KINDS } from './suggestion.js';
+import { suggestTarget } from './suggestion.js';
+import { explanationKey, longestGoodSession } from './explain.js';
 import {
   buildBackup, parseBackup, mergeSessions, buildCsv, backupFileName, importSummary,
 } from './backup.js';
@@ -74,6 +75,7 @@ function applyStaticText() {
   for (const el of document.querySelectorAll('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder);
   renderIntro($('welcome-intro'));
   renderIntro($('help-intro-body'));
+  renderPrep();
   appliedLang = getLang();
 }
 let appliedLang = null;
@@ -90,6 +92,127 @@ function renderIntro(box) {
   example.className = 'intro-example';
   example.append(Object.assign(document.createElement('strong'), { textContent: `${t('introExampleTitle')}: ` }), t('introExample'));
   box.replaceChildren(p('introLead', 'intro-lead'), steps, example, p('introNote', 'intro-note'));
+}
+
+// "Getting ready at home": examples with tick boxes for the moment. Nothing is saved or
+// counted – no session, no chart, no suggestion, no progression.
+function renderPrep() {
+  $('prep-list').replaceChildren(
+    ...['prepStep1', 'prepStep2', 'prepStep3', 'prepStep4'].map((k) => {
+      const li = document.createElement('li');
+      const label = document.createElement('label');
+      label.className = 'check';
+      const box = Object.assign(document.createElement('input'), { type: 'checkbox' });
+      label.append(box, Object.assign(document.createElement('span'), { textContent: t(k) }));
+      li.append(label);
+      return li;
+    }),
+  );
+}
+
+// ---------- pages and menu ----------
+// The main screen keeps only what you need to train. Previous sessions, settings, data and
+// help are separate pages. A page is only a view: a running session is in `state` and keeps
+// running (and saving) whatever page is shown.
+
+const PAGES = ['history', 'settings', 'data', 'help'];
+const pageFromUrl = () => (PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home');
+let view = pageFromUrl();
+let menuOpen = false;
+let pushedFromHome = false; // the page was opened from the main screen: Back = the browser's back
+let historyCtx = null; // place shown on the history page (starts at the main screen's place)
+
+function go(next) {
+  menuOpen = false;
+  if (next === view) return render();
+  const from = view;
+  view = next;
+  if (next === 'history') historyCtx = contextId();
+  if (next === 'settings') {
+    fillSettingsForm();
+    $('settings-status').textContent = '';
+  }
+  // Keep the address in step, so the phone's own back gesture/button works too.
+  if (next === 'home') {
+    if (pushedFromHome) history.back();
+    else history.replaceState(null, '', location.pathname + location.search);
+    pushedFromHome = false;
+  } else if (from === 'home') {
+    history.pushState(null, '', `#${next}`);
+    pushedFromHome = true;
+  } else {
+    history.replaceState(null, '', `#${next}`);
+  }
+  render();
+  window.scrollTo(0, 0);
+  (next === 'home' ? $('menu-btn') : $(`${next}-title`)).focus({ preventScroll: true });
+}
+
+window.addEventListener('popstate', () => {
+  const next = pageFromUrl();
+  if (next === view) return;
+  if (next === 'history') historyCtx = contextId();
+  if (next === 'settings') fillSettingsForm();
+  if (next === 'home') pushedFromHome = false;
+  view = next;
+  menuOpen = false;
+  render();
+});
+
+document.addEventListener('click', (e) => {
+  const nav = e.target.closest('[data-nav]');
+  if (nav) return go(nav.dataset.nav);
+  if (menuOpen && !e.target.closest('#menu, #menu-btn')) {
+    menuOpen = false;
+    render();
+  }
+});
+
+$('menu-btn').addEventListener('click', () => {
+  menuOpen = !menuOpen;
+  render();
+  if (menuOpen) ($('menu').querySelector('[aria-current="page"]') || $('menu').querySelector('button')).focus();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && menuOpen) {
+    menuOpen = false;
+    render();
+    $('menu-btn').focus();
+  }
+});
+
+$('prep-link').addEventListener('click', () => {
+  go('help');
+  $('help-prep').open = true;
+  $('help-prep').querySelector('summary').focus({ preventScroll: true });
+});
+
+function renderPages() {
+  $('page-home').hidden = view !== 'home';
+  for (const p of PAGES) $(`page-${p}`).hidden = view !== p;
+  document.body.dataset.view = view;
+  $('menu').hidden = !menuOpen;
+  $('menu-btn').setAttribute('aria-expanded', String(menuOpen));
+  for (const b of $('menu').querySelectorAll('[data-nav]')) {
+    if (b.dataset.nav === view) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  }
+  renderLiveBar();
+}
+
+// On another page during a session: a clear way back. The session itself is never touched.
+function renderLiveBar() {
+  const bar = $('live-bar');
+  // (After "Didn't go well" the session is already saved; only the optional question waits.)
+  const busy = state.active || state.pending;
+  bar.hidden = view === 'home' || !busy;
+  if (bar.hidden) return;
+  bar.classList.toggle('pending', !state.active);
+  $('live-bar-text').textContent = state.active
+    ? t('liveBarTraining', { dog: dogName(), time: formatTimer(elapsedSeconds(state.active, Date.now())) })
+    : t('liveBarPending');
+  $('live-bar-action').textContent = state.active ? t('liveBarBack') : t('liveBarBackResult');
 }
 
 // ---------- first start ----------
@@ -270,21 +393,11 @@ function currentTarget() {
   return { suggestion, suggested: suggestion.sec, repeat: suggestion.repeatSec, value };
 }
 
-// One main, plain-language explanation per kind of suggestion.
+// One main, plain-language explanation of the ACTUAL reason (see explain.js).
 // Never "the dog can …" – the journal can't establish that.
-function explanation(kind, sec) {
-  switch (kind) {
-    case KINDS.RAISE: return t('explainRaise');
-    case KINDS.REPEAT: return t('explainRepeat');
-    case KINDS.LIMITED: return sec == null ? t('explainLimitedNone') : t('explainLimited', { time: formatTarget(sec) });
-    case KINDS.EASIER: return t('explainEasier');
-    case KINDS.HARD_CHOOSE: return t('explainHardChoose');
-    case KINDS.WORRIED_AT_ONCE: return t('explainWorried');
-    case KINDS.BREAK: return t('explainBreak');
-    case KINDS.TOO_LITTLE: return t('explainTooLittle');
-    case KINDS.NONE: return t('explainNone');
-    default: return '';
-  }
+function explanation(suggestion) {
+  const { key, params } = explanationKey(suggestion);
+  return key ? t(key, params) : '';
 }
 
 $('end-btn').addEventListener('click', () => {
@@ -390,6 +503,7 @@ function render() {
 
   const mode = state.active ? 'training' : state.pending ? 'result' : 'ready';
   if (mode !== 'ready' || !state.sessions.some((x) => x.id === onsetFor)) onsetFor = null;
+  renderPages();
   const askOnset = mode === 'ready' && onsetFor != null;
   $('view-onset').hidden = !askOnset;
   $('view-ready').hidden = mode !== 'ready' || askOnset;
@@ -406,7 +520,7 @@ function render() {
 
   $('dog-name').textContent = dogName();
   const ctxName = contextName(contextId());
-  for (const id of ['context-name', 'progress-context', 'history-context']) $(id).textContent = ctxName;
+  for (const id of ['context-name', 'progress-context']) $(id).textContent = ctxName;
   $('empty').textContent = t('empty', { place: ctxName });
 
   clearInterval(tick);
@@ -419,7 +533,10 @@ function render() {
   if (mode === 'training') {
     $('training-label').textContent = t('trainingLabel', { dog: dogName() });
     renderTimer();
-    tick = setInterval(renderTimer, 250);
+    tick = setInterval(() => {
+      renderTimer();
+      renderLiveBar();
+    }, 250);
   }
   if (mode === 'result') {
     $('result-duration').textContent = formatDuration(state.pending.durationSec);
@@ -432,6 +549,7 @@ function render() {
   lastMode = mode;
 
   renderProgress();
+  renderHistory();
   renderData();
   renderSettingsInfo();
 }
@@ -460,7 +578,8 @@ function fillPlaceButtons(container, selectedId) {
 
 function renderSettingsInfo() {
   $('help-calc-1').innerHTML = tHtml('helpCalc1', { places: listNames(state.contexts.map((c) => c.name)) });
-  if (!$('settings-details').open) fillSettingsForm();
+  // Keep the form in step with the data – but never while the user may be typing in it.
+  if (view !== 'settings') fillSettingsForm();
 }
 
 // ---------- settings: dog name, language, place names ----------
@@ -495,15 +614,6 @@ function fillSettingsForm() {
   $('settings-error').textContent = '';
 }
 
-// Fill the form synchronously when opening. (The "toggle" event fires later and could
-// overwrite what the user has already started typing.)
-$('settings-details').querySelector('summary').addEventListener('click', () => {
-  if (!$('settings-details').open) {
-    fillSettingsForm();
-    $('settings-status').textContent = '';
-  }
-});
-
 $('settings-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const dogErr = validateDogName($('settings-dog').value);
@@ -523,15 +633,15 @@ $('settings-form').addEventListener('submit', (e) => {
   const changed = JSON.stringify([next.dogs, next.contexts, next.lang]) !== JSON.stringify([state.dogs, state.contexts, state.lang]);
   setLang(next.lang ?? getLang());
   update(next);
-  $('settings-details').open = false;
   fillSettingsForm();
   $('settings-status').textContent = changed ? t('settingsSaved') : t('settingsNoChanges');
 });
 
+// Cancel: nothing is saved; back to the main screen.
 $('settings-cancel').addEventListener('click', () => {
   fillSettingsForm();
-  $('settings-details').open = false;
   $('settings-status').textContent = '';
+  go('home');
 });
 
 $('settings-form').addEventListener('input', () => ($('settings-error').textContent = ''));
@@ -544,13 +654,16 @@ function renderReady() {
   const { suggestion, suggested, repeat, value } = currentTarget();
   const isSuggested = suggested != null && value === suggested;
 
+  // The app's suggestion and a target the user set are always told apart.
+  const own = !isSuggested && !(value == null && suggested == null);
   $('target-label').textContent = isSuggested
     ? t('targetSuggestion')
-    : value == null
-      ? suggested == null
-        ? t('targetChoose')
-        : t('targetNone')
-      : t('targetYours');
+    : !own
+      ? t('targetNoAuto')
+      : value == null
+        ? t('targetYoursNone')
+        : t('targetYours');
+  $('target-label').dataset.source = isSuggested ? 'app' : own ? 'user' : 'none';
   $('target-value').textContent = value == null ? t('targetNone') : formatTarget(value);
   $('target-value').setAttribute(
     'aria-label',
@@ -560,14 +673,25 @@ function renderReady() {
   $('target-down').disabled = value == null || value <= MIN_TARGET_SEC;
   $('target-edit').hidden = !targetEditorOpen;
 
-  $('target-basis').textContent = explanation(suggestion.kind, suggestion.sec);
+  // When the user has set their own target, the line says what the APP suggests and why.
+  const reason = explanation(suggestion);
+  $('target-basis').textContent = own
+    ? `${suggested == null ? t('appSuggestionNone') : t('appSuggestion', { time: formatTarget(suggested) })} ${reason}`
+    : reason;
   $('target-basis').dataset.kind = suggestion.kind;
 
-  // Earlier stable level: history only, shown when it is above today's suggestion.
+  // History, kept short and quiet below today's target. Neither number is a target, and
+  // neither is used to compute one.
+  // - Longest session marked "Went well" here (one single session, with its date).
+  // - Earlier stable level (several sessions, before the current window): shown when above today.
+  const best = longestGoodSession(sessionsFor(state, current()));
+  $('best-good').hidden = !best;
+  $('best-good').textContent = best ? t('bestGood', { dur: formatDuration(best.durationSec), date: longDate(best.startedAt) }) : '';
   const earlier = suggestion.earlierLevel;
   const showEarlier = earlier != null && (suggested == null || earlier > suggested);
   $('earlier-level').hidden = !showEarlier;
   $('earlier-level').textContent = showEarlier ? t('earlierLevel', { time: formatTarget(earlier) }) : '';
+  $('history-facts').hidden = !best && !showEarlier;
 
   const chips = [];
   if (suggested != null && value !== suggested) {
@@ -580,6 +704,14 @@ function renderReady() {
   $('target-chips').innerHTML = chips
     .map(([v, label]) => `<button type="button" class="chip" data-target="${v}">${escapeHtml(label)}</button>`)
     .join('');
+}
+
+// "12 September" (with the year when it isn't this year).
+function longDate(ms) {
+  const d = new Date(ms);
+  const opts = { day: 'numeric', month: 'long' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(locale(), opts);
 }
 
 function renderTimer() {
@@ -595,6 +727,7 @@ function renderTimer() {
   }
 }
 
+// Main screen: the chart for the selected place, and the way to its sessions.
 function renderProgress() {
   const sessions = sessionsFor(state, current());
   const hasData = sessions.length > 0;
@@ -608,9 +741,25 @@ function renderProgress() {
   $('empty').hidden = hasData;
   document.querySelector('#progress .legend').hidden = !hasData;
   $('legend-target').hidden = !sessions.slice(-MAX_BARS).some((s) => s.targetSec);
-  $('history-section').hidden = !hasData;
+  $('history-link').hidden = !hasData;
+  $('history-link').textContent = hasData ? `${t('historyLink', { n: sessions.length })} ›` : '';
+  // Only for someone who hasn't logged any session yet: easy to find, never in the way later.
+  $('prep-link').hidden = state.sessions.some((s) => s.dogId === dogId());
+}
 
-  const showAll = showAllHistory[contextId()];
+// History page: sessions per place, newest first. Read, edit or delete.
+const historyContextId = () => (view === 'history' && historyCtx) || contextId();
+
+function renderHistory() {
+  const ctx = historyContextId();
+  fillPlaceButtons($('history-picker'), ctx);
+  const sessions = sessionsFor(state, { dogId: dogId(), contextId: ctx });
+  const hasData = sessions.length > 0;
+  $('history-empty').hidden = hasData;
+  $('history-empty').textContent = hasData ? '' : t('historyEmpty', { place: contextName(ctx) });
+  $('history-hint').hidden = !hasData;
+
+  const showAll = showAllHistory[ctx];
   const newestFirst = sessions.slice().reverse();
   const visible = showAll ? newestFirst : newestFirst.slice(0, HISTORY_PREVIEW);
   const more = $('history-more');
@@ -649,6 +798,13 @@ function renderProgress() {
     .join('');
 }
 
+$('history-picker').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-context]');
+  if (!b) return;
+  historyCtx = b.dataset.context;
+  renderHistory();
+});
+
 function renderData() {
   $('last-backup').textContent = state.lastBackupAt
     ? t('dataLast', {
@@ -663,8 +819,9 @@ const HISTORY_PREVIEW = 10;
 const showAllHistory = {};
 
 $('history-more').addEventListener('click', () => {
-  showAllHistory[contextId()] = !showAllHistory[contextId()];
-  renderProgress();
+  const ctx = historyContextId();
+  showAllHistory[ctx] = !showAllHistory[ctx];
+  renderHistory();
 });
 
 // ---------- edit / delete a session ----------
@@ -961,6 +1118,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+fillSettingsForm(); // also when the app opens directly on the settings page
 render();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
