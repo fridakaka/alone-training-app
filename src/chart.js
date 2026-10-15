@@ -8,7 +8,11 @@ import { RESULTS } from './training.js';
 import { formatTarget } from './progression.js';
 import { t, locale, formatDuration } from './i18n.js';
 
-export const MAX_BARS = 30;
+// The main screen shows only the latest sessions, zoomed in on where the training is.
+export const MAX_BARS = 10;
+// A session more than this many times the typical (median) time is cut off ("broken" bar
+// with its time written above), so one very long session can't flatten all the others.
+export const CLIP_RATIO = 3;
 
 // "Didn't go well · worried at 0:30", "Went well · not counted". Used by graph and history.
 export function resultText(s) {
@@ -19,8 +23,8 @@ export function resultText(s) {
 }
 
 const W = 340;
-const H = 190;
-const PAD = { top: 12, right: 8, bottom: 26, left: 40 };
+const H = 200;
+const PAD = { top: 24, right: 8, bottom: 26, left: 40 };
 
 const STEPS = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200];
 
@@ -40,22 +44,45 @@ export function tickLabel(sec) {
   return `${+(sec / 3600).toFixed(1)}h`;
 }
 
+// Short time written above a cut-off bar: "45s", "12m", "2.2h".
+export function compactDuration(sec) {
+  if (sec < 60) return `${Math.round(sec)}s`;
+  if (sec < 3600) return `${Math.round(sec / 60)}m`;
+  return `${+(sec / 3600).toFixed(1)}h`;
+}
+
+const median = (xs) => {
+  const v = xs.slice().sort((a, b) => a - b);
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
+
+// Highest value the zoomed chart shows: the longest time (or target), unless that is far
+// above the typical session – then CLIP_RATIO × the median, and longer bars are cut off.
+export function chartCap(sessions) {
+  const values = sessions.flatMap((s) => [s.durationSec, s.targetSec || 0]).filter((v) => v > 0);
+  if (!values.length) return 1;
+  const max = Math.max(...values);
+  const med = median(sessions.map((s) => s.durationSec).filter((v) => v > 0));
+  return Number.isFinite(med) && max > CLIP_RATIO * med ? CLIP_RATIO * med : max;
+}
+
 const dateFmt = (ms) =>
   new Date(ms).toLocaleDateString(locale(), { day: 'numeric', month: 'short' });
+const dayFmt = (ms) =>
+  new Date(ms).toLocaleDateString(locale(), { day: 'numeric', month: 'numeric' });
 
+/** Zoomed bar chart of the latest MAX_BARS sessions. @returns {string} SVG ('' if none) */
 export function renderChart(allSessions) {
   const sessions = allSessions.slice(-MAX_BARS);
   if (sessions.length === 0) return '';
 
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
-  const { top, ticks } = niceScale(
-    Math.max(...sessions.map((s) => Math.max(s.durationSec, s.targetSec || 0))),
-  );
-  const slot = plotW / Math.max(sessions.length, 6); // keep bars from getting huge
-  const gap = 2;
-  const barW = Math.max(3, Math.min(28, slot - gap));
-  const y = (v) => PAD.top + plotH - (v / top) * plotH;
+  const { top, ticks } = niceScale(chartCap(sessions));
+  const slot = plotW / MAX_BARS; // same bar width from the first session on
+  const barW = Math.max(3, Math.min(24, slot - 6));
+  const y = (v) => PAD.top + plotH - (Math.min(v, top) / top) * plotH;
   const baseline = y(0);
 
   const grid = ticks
@@ -69,32 +96,31 @@ export function renderChart(allSessions) {
   const bars = sessions
     .map((s, i) => {
       const x = PAD.left + i * slot + (slot - barW) / 2;
+      const cx = x + barW / 2;
+      const clipped = s.durationSec > top;
       const h = Math.max(2, baseline - y(s.durationSec));
       const r = Math.min(4, barW / 2, h);
       const target = s.targetSec ? ` (${t('historyTarget', { time: formatTarget(s.targetSec) })})` : '';
       const label = `${dateFmt(s.startedAt)} · ${formatDuration(s.durationSec)}${target} · ${resultText(s)}`;
       const tickW = Math.min(barW + 6, slot);
-      const targetTick = s.targetSec
-        ? `<line class="target" x1="${x + barW / 2 - tickW / 2}" x2="${x + barW / 2 + tickW / 2}" y1="${y(s.targetSec)}" y2="${y(s.targetSec)}"/>`
+      const targetTick = s.targetSec && s.targetSec <= top
+        ? `<line class="target" x1="${cx - tickW / 2}" x2="${cx + tickW / 2}" y1="${y(s.targetSec)}" y2="${y(s.targetSec)}"/>`
+        : '';
+      // A cut-off bar: a gap across its top part and its real time written above.
+      const cut = clipped
+        ? `<path class="cut" d="M${x - 2},${PAD.top + 9} L${x + barW + 2},${PAD.top + 5} M${x - 2},${PAD.top + 14} L${x + barW + 2},${PAD.top + 10}"/>
+      <text class="clip-label" x="${cx}" y="${PAD.top - 6}" text-anchor="middle">↑${compactDuration(s.durationSec)}</text>`
         : '';
       return `
-    <g class="bar ${s.result}" data-id="${s.id}" tabindex="0" role="img" aria-label="${label}">
-      <rect class="hit" x="${PAD.left + i * slot}" y="${PAD.top}" width="${slot}" height="${plotH}"/>
+    <g class="bar ${s.result}${clipped ? ' clipped' : ''}" data-id="${s.id}" tabindex="0" role="img" aria-label="${label}">
+      <rect class="hit" x="${PAD.left + i * slot}" y="${PAD.top - 18}" width="${slot}" height="${plotH + 18}"/>
       <path class="mark" d="${roundedTopBar(x, baseline, barW, h, r)}"/>
       ${targetTick}
+      ${cut}
+      <text class="axis day" x="${cx}" y="${H - 8}" text-anchor="middle">${dayFmt(s.startedAt)}</text>
     </g>`;
     })
     .join('');
-
-  const first = sessions[0];
-  const last = sessions[sessions.length - 1];
-  const xLabels = `
-    <text class="axis" x="${PAD.left}" y="${H - 8}" text-anchor="start">${dateFmt(first.startedAt)}</text>
-    ${
-      sessions.length > 1
-        ? `<text class="axis" x="${W - PAD.right}" y="${H - 8}" text-anchor="end">${dateFmt(last.startedAt)}</text>`
-        : ''
-    }`;
 
   return `
 <svg class="chart" viewBox="0 0 ${W} ${H}" role="group" aria-label="${t('chartAria')}">
@@ -107,7 +133,81 @@ export function renderChart(allSessions) {
   ${grid}
   <line class="baseline" x1="${PAD.left}" x2="${W - PAD.right}" y1="${baseline}" y2="${baseline}"/>
   ${bars}
-  ${xLabels}
+</svg>`;
+}
+
+/** True when the zoomed chart cuts off at least one bar (the app then explains the ↑). */
+export function hasClippedBars(allSessions) {
+  const sessions = allSessions.slice(-MAX_BARS);
+  if (!sessions.length) return false;
+  const { top } = niceScale(chartCap(sessions));
+  return sessions.some((s) => s.durationSec > top);
+}
+
+// ---------- the whole course: every session, log scale, smoothed line ----------
+
+export const SMOOTH_SESSIONS = 5; // the line = median of the latest 5 good sessions at each point
+const OW = 340;
+const OH = 230;
+const OPAD = { top: 12, right: 12, bottom: 26, left: 40 };
+const LOG_TICKS = [1, 10, 30, 60, 300, 900, 1800, 3600, 7200, 14400, 28800];
+
+// Typical time that went well: at each good session, the median of it and the good
+// sessions just before it. Only good sessions ("don't count" left out). Pure.
+export function smoothedGood(sessions, n = SMOOTH_SESSIONS) {
+  const goods = sessions.filter((s) => s.result === RESULTS.GOOD && !s.uncertain && s.durationSec > 0);
+  return goods.map((s, i) => ({ at: s.startedAt, sec: median(goods.slice(Math.max(0, i - n + 1), i + 1).map((g) => g.durationSec)) }));
+}
+
+/**
+ * Overview of the course in one place. Log scale, so 10 s and 2 h are both readable.
+ * @param sessions sessions of one dog in one place
+ * @param opts.from  only sessions from this time (ms); null = from the start
+ * @returns {string} SVG ('' if none)
+ */
+export function renderOverview(allSessions, { from = null } = {}) {
+  const sessions = allSessions
+    .filter((s) => Number.isFinite(s.startedAt) && (from == null || s.startedAt >= from))
+    .sort((a, b) => a.startedAt - b.startedAt);
+  if (!sessions.length) return '';
+
+  const plotW = OW - OPAD.left - OPAD.right;
+  const plotH = OH - OPAD.top - OPAD.bottom;
+  const secs = sessions.map((s) => Math.max(1, s.durationSec));
+  const lo = [...LOG_TICKS].reverse().find((v) => v <= Math.min(...secs)) ?? 1;
+  const hi = LOG_TICKS.find((v) => v >= Math.max(...secs)) ?? LOG_TICKS[LOG_TICKS.length - 1];
+  const top = hi > lo ? hi : lo * 10;
+  const ly = (v) => OPAD.top + plotH - ((Math.log(Math.max(1, v)) - Math.log(lo)) / (Math.log(top) - Math.log(lo))) * plotH;
+  const t0 = from ?? sessions[0].startedAt;
+  const t1 = Math.max(sessions[sessions.length - 1].startedAt, t0 + 1);
+  const x = (ms) => OPAD.left + 6 + ((ms - t0) / (t1 - t0)) * (plotW - 12);
+
+  const ticks = LOG_TICKS.filter((v) => v >= lo && v <= top);
+  const grid = ticks
+    .map((v) => `
+    <line class="grid" x1="${OPAD.left}" x2="${OW - OPAD.right}" y1="${ly(v)}" y2="${ly(v)}"/>
+    <text class="axis" x="${OPAD.left - 6}" y="${ly(v)}" text-anchor="end" dominant-baseline="middle">${tickLabel(v)}</text>`)
+    .join('');
+
+  const line = smoothedGood(sessions);
+  const path = line.length > 1
+    ? `<path class="trend" d="${line.map((p, i) => `${i ? 'L' : 'M'}${x(p.at).toFixed(1)},${ly(p.sec).toFixed(1)}`).join(' ')}"/>`
+    : '';
+
+  const dots = sessions
+    .map((s) => {
+      const label = `${dateFmt(s.startedAt)} · ${formatDuration(s.durationSec)} · ${resultText(s)}`;
+      return `<circle class="dot ${s.result}" cx="${x(s.startedAt).toFixed(1)}" cy="${ly(s.durationSec).toFixed(1)}" r="4" role="img" aria-label="${label}"/>`;
+    })
+    .join('');
+
+  return `
+<svg class="chart overview-chart" viewBox="0 0 ${OW} ${OH}" role="group" aria-label="${t('overviewAria')}">
+  ${grid}
+  ${path}
+  ${dots}
+  <text class="axis" x="${OPAD.left}" y="${OH - 8}" text-anchor="start">${dateFmt(t0)}</text>
+  <text class="axis" x="${OW - OPAD.right}" y="${OH - 8}" text-anchor="end">${dateFmt(t1)}</text>
 </svg>`;
 }
 

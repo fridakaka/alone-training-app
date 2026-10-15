@@ -158,9 +158,13 @@
         <div id="chart"></div>
         <p id="chart-detail" class="detail" aria-live="polite"></p>
         <p id="chart-note" class="chart-note" hidden></p>
+        <p id="chart-clip-note" class="chart-note" data-i18n="chartClipNote" hidden></p>
         <p id="empty" class="empty"></p>
         <button id="prep-link" class="btn-link prep-link" type="button" data-i18n="prepLink" hidden></button>
-        <button id="history-link" class="btn-link history-link" type="button" data-nav="history" hidden></button>
+        <div id="progress-links" class="progress-links">
+          <button id="overview-btn" class="btn-link" type="button" hidden><span data-i18n="overviewOpen">Show the whole course</span> ›</button>
+          <button id="history-link" class="btn-link history-link" type="button" data-nav="history" hidden></button>
+        </div>
       </section>
     </div>
 
@@ -283,6 +287,27 @@
       </label>
     </div>
   </section>
+
+  <!-- The whole course in one place: every session on a log scale, with a smoothed line. -->
+  <dialog id="overview-dialog" class="sheet" aria-labelledby="overview-title">
+    <div class="overview">
+      <h2 id="overview-title"><span data-i18n="overviewTitle">The whole course</span> <span class="dot">·</span> <span id="overview-place" class="muted"></span></h2>
+      <div id="overview-period" class="chips" role="group" data-i18n-aria="overviewPeriodAria" aria-label="Period">
+        <button type="button" class="chip" data-days="30" data-i18n="overview30">30 days</button>
+        <button type="button" class="chip" data-days="90" data-i18n="overview90">3 months</button>
+        <button type="button" class="chip" data-days="all" data-i18n="overviewAll">All</button>
+      </div>
+      <div class="legend overview-legend" aria-hidden="true">
+        <span><i class="legend-dot good"></i><span data-i18n="good">Went well</span></span>
+        <span><i class="legend-dot bad"></i><span data-i18n="bad">Didn't go well</span></span>
+        <span><i class="legend-line"></i><span data-i18n="overviewLegendLine">Typical time that went well</span></span>
+      </div>
+      <div id="overview-chart"></div>
+      <p id="overview-empty" class="empty" data-i18n="overviewEmpty" hidden></p>
+      <p class="hint" data-i18n="overviewNote"></p>
+      <button id="overview-close" type="button" class="btn btn-quiet" data-i18n="close">Close</button>
+    </div>
+  </dialog>
 
   <!-- Review BEFORE an import changes anything. -->
   <dialog id="import-dialog" class="sheet" aria-labelledby="import-title">

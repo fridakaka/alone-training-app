@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.9)
+# Alone Time – dog alone-training tracker (v0.10)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -26,6 +26,20 @@ or train without a target.
 
 Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
 The app is a training journal – not advice, and it can't tell how long a dog can be alone.
+
+## Readable chart (v0.10)
+
+- The main screen shows the **latest 10 sessions**, zoomed in on where the training is. A session
+  more than 3 × the typical (median) time is **cut off** with its real time written above (↑50m),
+  so one very long session no longer squashes the short ones. Tap a bar for the exact time.
+- **Show the whole course** opens every session in the place (30 days / 3 months / all) on a
+  log scale – 10 s and 2 h both fit – with a line for the typical time that went well
+  (median of the latest 5 good sessions). Only a view: nothing is stored or used by the suggestion.
+
+<p>
+<img src="docs/screenshots/30-chart-zoomed-sv.png" width="260" alt="Zoomed chart with cut-off long sessions">
+<img src="docs/screenshots/31-overview-sv.png" width="220" alt="The whole course with a smoothed line">
+</p>
 
 ## Shorter main screen, menu, honest suggestion texts (v0.9)
 

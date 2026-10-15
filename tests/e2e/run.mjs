@@ -545,10 +545,10 @@ try {
         }
       });
       await gotoApp(p);
-      assert.equal(await p.locator('.chart .bar').count(), 16);
+      assert.equal(await p.locator('.chart .bar').count(), 10); // zoomed in on the latest 10
       assert.equal(await p.locator('#history li').count(), 10);
       assert.equal((await p.textContent('#history-more')).trim(), 'Show all (16)');
-      assert.ok(await p.isHidden('#chart-note'));
+      assert.equal((await p.textContent('#chart-note')).trim(), 'The latest 10 of 16 sessions.');
       await p.screenshot({ path: OUT + `4-history-${scheme}.png`, fullPage: true });
       await open(p, 'history');
       await p.screenshot({ path: OUT + `4b-history-page-${scheme}.png`, fullPage: true });
@@ -556,7 +556,7 @@ try {
     });
   }
 
-  await step('Show all expands the history; graph caption appears past 30 sessions', async () => {
+  await step('Show all expands the history; graph shows the latest 10 with a caption', async () => {
     const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
@@ -576,8 +576,8 @@ try {
       }));
     });
     await gotoApp(p);
-    assert.equal(await p.locator('.chart .bar').count(), 30);
-    assert.equal((await p.textContent('#chart-note')).trim(), 'Showing the latest 30 of 35 sessions.');
+    assert.equal(await p.locator('.chart .bar').count(), 10);
+    assert.equal((await p.textContent('#chart-note')).trim(), 'The latest 10 of 35 sessions.');
     assert.equal(await p.locator('#history li').count(), 10);
     await open(p, 'history');
     await p.tap('#history-more');
@@ -1640,6 +1640,63 @@ try {
     assert.equal((await calls()).length, n); // no end, no restart
     await p.tap('#end-btn');
     assert.deepEqual((await calls()).at(-1), ['end']);
+    await c.close();
+  });
+
+  await step('chart: the latest 10 zoomed in, very long sessions cut off with their time; the whole course on its own sheet', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-10-15T10:44:00') });
+    await p.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      // Like the reported phone: mostly 1–5 min, a few very long hard sessions.
+      const plan = [
+        [1, 60, 'good'], [1, 90, 'good'], [2, 75, 'good'], [2, 120, 'bad'], [3, 90, 'good'], [3, 100, 'good'], [4, 150, 'bad'],
+        [4, 120, 'good'], [5, 110, 'good'], [5, 140, 'good'], [6, 300, 'bad'], [6, 120, 'good'], [7, 3600, 'bad'], [7, 7800, 'bad'],
+        [8, 60, 'good'], [9, 70, 'good'], [9, 80, 'good'], [10, 75, 'good'], [11, 80, 'good'], [12, 1500, 'bad'],
+        [13, 80, 'good'], [13, 3000, 'bad'], [14, 80, 'good'],
+      ];
+      const sessions = plan.map(([d, sec, result], i) => {
+        const at = new Date(2026, 9, d, 9 + (i % 2) * 6).getTime();
+        return { id: 'p' + i, dogId: 'charlie', contextId: 'home', startedAt: at, endedAt: at + sec * 1000, durationSec: sec, targetSec: null, result };
+      });
+      localStorage.setItem('alone-training:v2', JSON.stringify({ schemaVersion: 2, lang: 'sv', onboarded: true, dogs: [{ id: 'charlie', name: 'Charlie' }],
+        contexts: [{ id: 'home', name: 'Ensam Hemma hela lägenheten' }, { id: 'car', name: 'Övning sovrummet' }, { id: 'outside-shop', name: 'Test' }],
+        selectedContextId: 'home', active: null, pending: null, sessions }));
+    });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    const before = await p.evaluate(() => localStorage.getItem('alone-training:v2'));
+    assert.equal(await p.locator('#chart .bar').count(), 10);
+    // The 2 h 10 min, 25 min and 50 min sessions are cut off and labelled, so the 1–2 minute ones are readable.
+    assert.equal(await p.locator('#chart .bar.clipped').count(), 3);
+    assert.deepEqual(await p.locator('#chart .clip-label').allTextContents(), ['↑2.2h', '↑25m', '↑50m']);
+    const short = await p.locator('#chart .bar.good .mark').last().boundingBox();
+    const plot = await p.locator('#chart svg').boundingBox();
+    assert.ok(short.height > plot.height * 0.15, `a 1:20 bar is ${short.height}px high`);
+    assert.match(await t('#chart-clip-note'), /^↑ Mycket längre pass är avkortade/);
+    // Tapping a cut-off bar gives the exact time.
+    await p.locator('#chart .bar.clipped').last().tap();
+    assert.match(await t('#chart-detail'), /50 min 00 s · Gick inte bra/);
+    await p.locator('#progress').screenshot({ path: OUT + '30-chart-zoomed-sv.png' });
+
+    // The whole course: every session, with a smoothed line for times that went well.
+    await p.tap('#overview-btn');
+    assert.ok(await p.isVisible('#overview-dialog'));
+    assert.equal(await t('#overview-place'), 'Ensam Hemma hela lägenheten');
+    assert.equal(await p.locator('#overview-chart .dot').count(), 23);
+    assert.equal(await p.locator('#overview-chart .trend').count(), 1);
+    await p.screenshot({ path: OUT + '31-overview-sv.png' });
+    await p.tap('[data-days="30"]');
+    assert.equal(await p.getAttribute('[data-days="30"]', 'aria-pressed'), 'true');
+    assert.equal(await p.locator('#overview-chart .dot').count(), 23);
+    await p.tap('#overview-close');
+    assert.ok(await p.isHidden('#overview-dialog'));
+    // Only a view: nothing stored changes, today's suggestion is the same.
+    assert.equal(await p.evaluate(() => localStorage.getItem('alone-training:v2')), before);
+    assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await c.close();
   });
 

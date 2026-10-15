@@ -26,7 +26,7 @@ import {
   RESULTS,
 } from './training.js';
 import { loadState, saveState } from './store.js';
-import { renderChart, resultText, MAX_BARS } from './chart.js';
+import { renderChart, renderOverview, hasClippedBars, resultText, MAX_BARS } from './chart.js';
 import { stepUp, stepDown, formatTarget, MIN_TARGET_SEC } from './progression.js';
 import { suggestTarget } from './suggestion.js';
 import { explanationKey, longestGoodSession } from './explain.js';
@@ -738,6 +738,8 @@ function renderProgress() {
   $('chart-note').textContent =
     hiddenBars > 0 ? t('chartNote', { shown: MAX_BARS, total: sessions.length }) : '';
   $('chart-detail').textContent = hasData ? t('chartTap') : '';
+  $('chart-clip-note').hidden = !hasClippedBars(sessions);
+  $('overview-btn').hidden = sessions.length < 2;
   $('empty').hidden = hasData;
   document.querySelector('#progress .legend').hidden = !hasData;
   $('legend-target').hidden = !sessions.slice(-MAX_BARS).some((s) => s.targetSec);
@@ -746,6 +748,38 @@ function renderProgress() {
   // Only for someone who hasn't logged any session yet: easy to find, never in the way later.
   $('prep-link').hidden = state.sessions.some((s) => s.dogId === dogId());
 }
+
+// ---------- the whole course (overview sheet) ----------
+
+const overviewDialog = $('overview-dialog');
+let overviewDays = 'all';
+
+function renderOverviewSheet() {
+  const sessions = sessionsFor(state, current());
+  const from = overviewDays === 'all' ? null : Date.now() - Number(overviewDays) * 86_400_000;
+  const svg = renderOverview(sessions, { from });
+  $('overview-chart').innerHTML = svg;
+  $('overview-empty').hidden = Boolean(svg);
+  $('overview-place').textContent = contextName(contextId());
+  for (const b of $('overview-period').querySelectorAll('[data-days]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.days === overviewDays));
+  }
+}
+
+$('overview-btn').addEventListener('click', () => {
+  renderOverviewSheet();
+  overviewDialog.showModal();
+});
+$('overview-period').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-days]');
+  if (!b) return;
+  overviewDays = b.dataset.days;
+  renderOverviewSheet();
+});
+$('overview-close').addEventListener('click', () => overviewDialog.close());
+overviewDialog.addEventListener('click', (e) => {
+  if (e.target === overviewDialog) overviewDialog.close();
+});
 
 // History page: sessions per place, newest first. Read, edit or delete.
 const historyContextId = () => (view === 'history' && historyCtx) || contextId();

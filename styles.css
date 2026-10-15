@@ -583,3 +583,24 @@ h1, .card h2 { overflow-wrap: anywhere; }
 .prep-list .check { font-size: 15px; color: var(--ink); min-height: 32px; align-items: center; }
 #view-result .comment-field { margin-top: 4px; }
 #view-result .question { margin-top: 8px; }
+
+/* ---------- v0.10: zoomed chart, whole course ---------- */
+.chart .cut { stroke: var(--surface); stroke-width: 3; }
+.chart .clip-label { fill: var(--ink-2); font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chart .axis.day { font-size: 9px; }
+.progress-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 12px; margin-top: 4px; }
+.progress-links .btn-link { margin: 0; padding: 8px 6px; }
+.progress-links:not(:has(button:not([hidden]))) { display: none; }
+.overview { display: grid; gap: 12px; }
+.overview h2 { font-size: 20px; }
+.overview .chips { justify-content: flex-start; margin-top: 0; }
+.overview .chip[aria-pressed="true"] { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
+.overview-legend { flex-wrap: wrap; gap: 6px 14px; }
+.legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.legend-dot.good { background: var(--good); }
+.legend-dot.bad { box-shadow: inset 0 0 0 2px var(--bad); }
+.legend-line { display: inline-block; width: 16px; height: 0; border-top: 2.5px solid var(--ink); border-radius: 2px; }
+.overview .hint { margin: 0; }
+.overview-chart .dot.good { fill: var(--good); stroke: var(--surface); stroke-width: 1.5; }
+.overview-chart .dot.bad { fill: var(--surface); stroke: var(--bad); stroke-width: 2; }
+.overview-chart .trend { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; opacity: 0.85; }

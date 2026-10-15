@@ -1,6 +1,6 @@
 // Makes the app open without internet.
 // Strategy: try the network first (so updates arrive), fall back to the saved copy.
-const CACHE = 'alone-time-v10';
+const CACHE = 'alone-time-v11';
 const FILES = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'icons/alone-time-32.png', 'icons/alone-time-180.png', 'icons/alone-time-192.png', 'icons/alone-time-512.png',
