@@ -46,7 +46,9 @@ test('every hard case: latest vs recent, with and without a worry time, both lan
   const cases = [
     // [sessions, kind, hard]
     [[s(3, 300, 'good', { targetSec: 300 }), s(1, 480, 'bad')], KINDS.EASIER, HARD.LATEST], // unknown worry, shorter basis
-    [[s(3, 300, 'good', { targetSec: 300 }), s(2, 480, 'bad'), s(1, 600, 'good', { targetSec: 600 })], KINDS.EASIER, HARD.RECENT],
+    // The latest session went well: already one step back towards the earlier level.
+    [[s(3, 300, 'good', { targetSec: 300 }), s(2, 480, 'bad'), s(1, 600, 'good', { targetSec: 600 })], KINDS.RECOVER, HARD.RECENT],
+    [[s(3, 300, 'good', { targetSec: 300 }), s(2, 480, 'bad'), s(1, 100, 'good')], KINDS.EASIER, HARD.RECENT], // ended early
     [[s(1, 120, 'bad')], KINDS.HARD_CHOOSE, HARD.LATEST], // no shorter basis
     [[s(2, 120, 'bad'), s(1, 60, 'good')], KINDS.HARD_CHOOSE, HARD.RECENT],
     [[s(1, 60, 'bad', { anxietyOnsetSec: 0 })], KINDS.WORRIED_AT_ONCE, HARD.LATEST],

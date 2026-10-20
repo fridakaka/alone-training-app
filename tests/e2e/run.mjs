@@ -131,6 +131,7 @@ try {
 
   await step('"Went well" saves the session to history and graph', async () => {
     await page.tap('#good-btn');
+    await page.tap('#saved-done');
     assert.ok(await page.isVisible('#start-btn'));
     assert.equal(await page.locator('#history li').count(), 1);
     assert.match(await page.textContent('#history li'), /1 min 1\d s[\s\S]*Went well/);
@@ -193,7 +194,8 @@ try {
     await page.clock.runFor(seconds * 1000);
     await page.tap('#end-btn');
     await page.tap(result === 'good' ? '#good-btn' : '#bad-btn');
-    if (result !== 'good') {
+    if (result === 'good') await page.tap('#saved-done');
+    else {
       if (onset == null) await page.tap('#onset-unknown');
       else {
         await page.fill('#onset-min', String(Math.floor(onset / 60)));
@@ -270,16 +272,17 @@ try {
     assert.ok(await page.isVisible('#view-result'));
     assert.match(await text('#view-result .label'), /6 min [0-2]\d s · target 4:45/);
     await page.tap('#good-btn');
+    await page.tap('#saved-done');
     assert.equal(await historyCount(), 2);
     assert.match(await text('#history li:first-child .dur'), /^6 min [0-2]\d s$/);
     assert.equal(await text('#history li:first-child .planned'), 'target 4:45');
     assert.equal(await page.locator('.chart .target').count(), 1);
   });
 
-  await step('two good Car sessions on the same day → the time both support, no raise', async () => {
+  await step('two good Car sessions (same day too) → the time both support, then a small increase', async () => {
     assert.equal(await text('#target-label'), 'Suggestion today');
-    assert.equal(await text('#target-value'), '5:00'); // not the longer 6 min 10 s
-    assert.equal(await text('#target-basis'), 'Limited basis — repeat 5:00.');
+    assert.equal(await text('#target-value'), '5:30'); // 5:00 + 10 % – not the longer 6 min 10 s
+    assert.equal(await text('#target-basis'), 'This time has gone well twice — small increase.');
     await page.screenshot({ path: OUT + '6-car-suggestion.png', fullPage: true });
   });
 
@@ -343,7 +346,7 @@ try {
     await session(30, 'good');
     assert.equal(await text('#target-label'), 'Suggestion today');
     assert.equal(await text('#target-value'), '0:35');
-    assert.equal(await text('#target-basis'), 'This time went well on different days and the latest session confirmed it — small increase.');
+    assert.equal(await text('#target-basis'), 'This time has gone well twice — small increase.');
     await page.screenshot({ path: OUT + '8-raise.png', fullPage: true });
   });
 
@@ -434,7 +437,8 @@ try {
     await open(page, 'help');
     await page.tap('#help-calc summary');
     assert.match(await text('#help-calc'), /never raises today's suggestion/);
-    assert.match(await text('#help-section'), /last 7 days/);
+    assert.match(await text('#help-section'), /nothing logged in 7 days/);
+    assert.match(await text('#help-section'), /at most 3 steps back/);
     assert.match(await text('#help-section'), /Earlier long sessions stay in\s+your history, but don't automatically decide today's time/);
     assert.match(await text('#help-section'), /can't tell how long your dog can safely be alone/);
   });
@@ -548,7 +552,7 @@ try {
       assert.equal(await p.locator('.chart .bar').count(), 10); // zoomed in on the latest 10
       assert.equal(await p.locator('#history li').count(), 10);
       assert.equal((await p.textContent('#history-more')).trim(), 'Show all (16)');
-      assert.equal((await p.textContent('#chart-note')).trim(), 'The latest 10 of 16 sessions.');
+      assert.equal((await p.textContent('#chart-note')).trim(), 'Latest 10 of 16');
       await p.screenshot({ path: OUT + `4-history-${scheme}.png`, fullPage: true });
       await open(p, 'history');
       await p.screenshot({ path: OUT + `4b-history-page-${scheme}.png`, fullPage: true });
@@ -577,7 +581,7 @@ try {
     });
     await gotoApp(p);
     assert.equal(await p.locator('.chart .bar').count(), 10);
-    assert.equal((await p.textContent('#chart-note')).trim(), 'The latest 10 of 35 sessions.');
+    assert.equal((await p.textContent('#chart-note')).trim(), 'Latest 10 of 35');
     assert.equal(await p.locator('#history li').count(), 10);
     await open(p, 'history');
     await p.tap('#history-more');
@@ -628,6 +632,7 @@ try {
     await p.clock.runFor(2_000);
     await p.tap('#end-btn');
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     assert.match(await t('#history li:first-child .dur'), /^2 s$/);
     assert.equal(await t('#history li:first-child .planned'), 'target 0:02');
     assert.equal(await t('#target-basis'), 'Limited basis — repeat 0:02.');
@@ -660,7 +665,7 @@ try {
     assert.equal(await t('#target-basis'), "It's been a while. Choose a short time that feels easy today.");
     assert.equal(await t('#earlier-level'), 'Earlier stable level (several sessions): 2:00:00');
     // The longest good session is shown as history (one session, with its date) – no target.
-    assert.equal(await t('#best-good'), 'Longest session that went well: 2 h 00 min, October 6');
+    assert.equal(await t('#best-good'), 'Longest session that went well: 2 h 00 min, Oct 6');
     assert.equal(await t('#history-facts-title'), "History · not today's target");
     await p.screenshot({ path: OUT + '14-after-break.png', fullPage: true });
     await p.tap('#target-up');
@@ -670,6 +675,7 @@ try {
     await p.clock.runFor(10_000);
     await p.tap('#end-btn');
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     assert.equal(await t('#target-value'), '0:10');
     assert.equal(await t('#target-basis'), 'Limited basis — repeat 0:10.');
     assert.ok(await p.isVisible('#earlier-level'));
@@ -691,13 +697,14 @@ try {
     await p.clock.runFor(500);
     await p.tap('#end-btn');
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     assert.match(await t('#history li:first-child .dur'), /^2 h 00 min$/); // stored unchanged
     assert.equal(await t('#target-value'), 'No target');
     // The latest session went well, so the text names the earlier one as the reason.
     assert.equal(await t('#target-basis'), 'A recent session with worry from the start still limits the suggestion. Choose a short, easy step.');
     assert.doesNotMatch(await t('#target-chips'), /Repeat/);
     // The new 2-hour session is now the longest good one – shown as history, never as a target.
-    assert.equal(await t('#best-good'), 'Longest session that went well: 2 h 00 min, October 20');
+    assert.equal(await t('#best-good'), 'Longest session that went well: 2 h 00 min, Oct 20');
     assert.equal(await t('#target-label'), 'No automatic target today');
     await c.close();
   });
@@ -812,6 +819,7 @@ try {
     assert.equal(await t('h1'), 'Charlie · Bilburen');
     await p.tap('#end-btn');
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     assert.equal(await p.locator('#history li').count(), 4);
     const stored = await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')));
     assert.equal(stored.sessions.filter((x) => x.contextId === 'car').length, 4);
@@ -938,6 +946,7 @@ try {
     await p.tap('#end-btn');
     assert.equal(await t('#view-result .question'), 'Hur gick det?');
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     assert.equal(await p.locator('#history .note').count(), 0);
 
     // Session 2: comment, survives a reload on the result screen, saved with the result.
@@ -954,6 +963,7 @@ try {
     assert.equal(await p.inputValue('#result-comment'), 'Grannhunden skällde.\nHan lade sig efter en stund.');
     await p.screenshot({ path: OUT + '19-sv-result-comment.png', fullPage: true });
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     assert.match(await t('#history li:first-child .note'), /Grannhunden skällde\.\s+Han lade sig efter en stund\./);
 
     // Session 3: comment + "didn't go well" + worry time.
@@ -1105,6 +1115,7 @@ try {
     assert.equal(await t('#training-label'), 'Sixten den store har varit ensam i');
     await p.tap('#end-btn');
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     assert.equal(await p.locator('#history li').count(), 4);
 
     // Switch back to English in settings: names stay exactly as they are.
@@ -1136,6 +1147,7 @@ try {
     await p.tap('#end-btn');
     await p.fill('#result-comment', 'Lugn hela tiden');
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     await open(p, 'data');
     const [dl] = await Promise.all([p.waitForEvent('download'), p.tap('#backup-btn')]);
     const path = OUT + 'backup-v07.json';
@@ -1186,6 +1198,7 @@ try {
     await p.tap('#end-btn');
     await p.fill('#result-comment', 'Han lade sig efter en stund. Grannhunden skällde två gånger men sedan var det lugnt resten av passet.');
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     await p.screenshot({ path: OUT + '23-dark-sv-home.png', fullPage: true });
     await open(p, 'help');
     await p.tap('#help-intro summary');
@@ -1407,7 +1420,7 @@ try {
     await p.tap('#menu-btn');
     assert.equal(await p.getAttribute('#menu-btn', 'aria-expanded'), 'true');
     assert.deepEqual((await p.locator('#menu .menu-item').allTextContents()).map((x) => x.trim()),
-      ['Main screen', 'Previous sessions', 'Settings', 'Your data', 'Help']);
+      ['Main screen', 'Untrained dog? Start here', 'Previous sessions', 'Settings', 'Your data', 'Help']);
     await p.keyboard.press('Escape');
     assert.ok(await p.isHidden('#menu'));
     // Tapping outside closes it too.
@@ -1415,7 +1428,7 @@ try {
     await p.tap('h1');
     assert.ok(await p.isHidden('#menu'));
     assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).active), null);
-    for (const [view, title] of [['history', 'Previous sessions'], ['settings', 'Settings'], ['data', 'Your data'], ['help', 'Help']]) {
+    for (const [view, title] of [['start', 'Completely untrained dog? Start here'], ['history', 'Previous sessions'], ['settings', 'Settings'], ['data', 'Your data'], ['help', 'Help']]) {
       await open(p, view);
       assert.ok(await p.isHidden('#page-home'));
       assert.ok(await p.isHidden('#live-bar')); // nothing running
@@ -1477,6 +1490,7 @@ try {
     await home(p);
     assert.equal(await p.inputValue('#result-comment'), 'Pep lite i början, lade sig sedan.');
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     let s = await stored();
     assert.equal(s.sessions.at(-1).result, 'good');
     assert.equal(s.sessions.at(-1).comment, 'Pep lite i början, lade sig sedan.');
@@ -1550,7 +1564,7 @@ try {
     const basis = await t('#target-basis');
     assert.equal(basis, 'Ett nyligt svårt pass gör att förslaget är kortare – under tiden då oron började i det passet.');
     assert.doesNotMatch(basis, /senaste/i);
-    assert.equal(await t('#best-good'), 'Längsta pass som gått bra: 2 tim 00 min, 12 september');
+    assert.equal(await t('#best-good'), 'Längsta pass som gått bra: 2 tim 00 min, 12 sep.');
     assert.equal(await t('#history-facts-title'), 'Historik · inte dagens mål');
     // Today's target stays the big number; the history lines are small.
     const size = (sel) => p.$eval(sel, (el) => parseFloat(getComputedStyle(el).fontSize));
@@ -1566,7 +1580,7 @@ try {
     await home(p);
     assert.equal(await t('#target-value'), '5:00');
     assert.equal(await t('#target-basis'), basis);
-    assert.equal(await t('#best-good'), 'Längsta pass som gått bra: 1 tim 00 min, 13 september');
+    assert.equal(await t('#best-good'), 'Längsta pass som gått bra: 1 tim 00 min, 13 sep.');
 
     // A target the user sets is told apart from the app's suggestion.
     await p.tap('#target-up');
@@ -1580,49 +1594,120 @@ try {
     assert.equal(await t('#target-label'), 'Inget automatiskt mål i dag');
     assert.equal(await t('#target-value'), 'Inget mål');
     assert.equal(await t('#target-basis'), 'Det var ett tag sedan. Välj en kort tid som känns lätt i dag.');
-    assert.equal(await t('#best-good'), 'Längsta pass som gått bra: 15 min 00 s, 26 september');
+    assert.equal(await t('#best-good'), 'Längsta pass som gått bra: 15 min 00 s, 26 sep.');
     // No relevant session → no record line at all.
     await p.locator('#context-picker .seg', { hasText: 'Utanför affären' }).tap();
     assert.ok(await p.isHidden('#history-facts'));
     await c.close();
   });
 
-  await step('"Getting ready at home": optional, easy to find, never logged or counted', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+  await step('"Start here" for an untrained dog: right under the menu, ticks are saved, never logged or counted', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE', acceptDownloads: true });
     const p = await c.newPage();
     watch(p);
     await gotoApp(p, { lang: 'sv', dog: 'Majken' });
     const t = (sel) => p.textContent(sel).then((x) => x.trim());
-    const raw = () => p.evaluate(() => localStorage.getItem('alone-training:v2'));
-    assert.equal(await t('#prep-link'), 'Inte redo för ett tidsatt pass än? Se ”Förberedelser hemma”.');
-    const before = await raw();
+    const stored = () => p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')));
+    // Second item in the menu, right below the main screen.
+    await p.tap('#menu-btn');
+    assert.equal((await p.locator('#menu .menu-item').nth(1).textContent()).trim(), 'Otränad hund? Börja här');
+    await p.keyboard.press('Escape');
+    assert.equal(await t('#prep-link'), 'Helt otränad hund? Börja här ›');
     await p.tap('#prep-link');
-    assert.ok(await p.isVisible('#page-help'));
-    assert.equal(await p.evaluate(() => document.getElementById('help-prep').open), true);
-    assert.equal(await p.locator('#prep-list li').count(), 4);
-    assert.match(await t('#help-prep'), /Res dig och sätt dig igen/);
-    assert.match(await t('#help-prep'), /verkar lugn och om den kan återgå till lugn/);
-    assert.match(await t('#help-prep'), /registreras inte som pass/);
-    assert.doesNotMatch(await t('#help-prep'), /poäng|nivå|låses upp|klarat/i);
+    assert.ok(await p.isVisible('#page-start'));
+    assert.equal(await t('#start-title'), 'Helt otränad hund? Börja här');
+    assert.match(await t('#page-start'), /Så fungerar det/);
+    assert.match(await t('#page-start'), /så små steg att den hela tiden kan vara lugn/);
+    assert.match(await t('#page-start'), /gå tillbaka till ett lättare steg/);
+    assert.match(await t('#page-start'), /verkar lugn och om den kan återgå till lugn/);
+    assert.doesNotMatch(await t('#page-start'), /poäng|låses upp|klarat/i);
+    assert.equal(await p.locator('#prep-list li').count(), 8);
     await p.locator('#prep-list input').first().check();
     await p.locator('#prep-list input').nth(2).check();
-    await p.screenshot({ path: OUT + '29-prep-sv.png', fullPage: true });
-    // Nothing stored, nothing counted.
-    assert.equal(await raw(), before);
+    await p.screenshot({ path: OUT + '29-start-here-sv.png', fullPage: true });
+    // Saved – but nothing else changes: no session, no chart, no suggestion.
+    let s = await stored();
+    assert.deepEqual(s.prepDone, ['prepStep1', 'prepStep3']);
+    assert.equal(s.sessions.length, 0);
     await home(p);
     assert.equal(await p.locator('.chart .bar').count(), 0);
     assert.equal(await t('#target-basis'), 'Inga pass loggade här än – välj en kort, lätt tid.');
+    // Still ticked after closing and reopening the app.
     await p.reload();
-    await open(p, 'help');
-    await p.tap('#help-prep summary');
-    assert.equal(await p.locator('#prep-list input:checked').count(), 0);
-    // Once training has started, the hint on the main screen goes away; it stays under Help.
+    await open(p, 'start');
+    assert.equal(await p.locator('#prep-list input:checked').count(), 2);
+    // ...and in the backup, which brings them back on a new phone.
+    await open(p, 'data');
+    const [dl] = await Promise.all([p.waitForEvent('download'), p.tap('#backup-btn')]);
+    const path = OUT + 'backup-prep.json';
+    await dl.saveAs(path);
+    assert.deepEqual(JSON.parse(await readFile(path, 'utf8')).prepDone, ['prepStep1', 'prepStep3']);
+    const c2 = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const p2 = await c2.newPage();
+    watch(p2);
+    await gotoApp(p2);
+    await importFile(p2, path);
+    assert.deepEqual(await p2.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).prepDone), ['prepStep1', 'prepStep3']);
+    await c2.close();
+    // Untick and remove all.
+    await open(p, 'start');
+    await p.locator('#prep-list input').first().uncheck();
+    assert.deepEqual((await stored()).prepDone, ['prepStep3']);
+    await p.tap('#prep-reset');
+    assert.deepEqual((await stored()).prepDone, []);
+    // Once training has started, the hint on the main screen goes away; the page stays in the menu.
     await home(p);
     await p.tap('#start-btn');
     await p.tap('#end-btn');
     await p.tap('#good-btn');
+    await p.tap('#saved-done');
     assert.ok(await p.isHidden('#prep-link'));
-    assert.equal(await p.locator('#help-prep').count(), 1);
+    await c.close();
+  });
+
+  await step('the main screen fits one iPhone screen (also with long place names and history lines)', async () => {
+    // iPhone 14/15 inside the app: 844 pt minus the status bar and the home indicator.
+    const c = await browser.newContext({ ...phone, viewport: { width: 390, height: 763 }, serviceWorkers: 'block', locale: 'sv-SE' });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-10-20T08:07:00') });
+    await p.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      const plan = [[8, 9, 1074], [9, 10, 1074], [16, 9, 58, 20], [16, 10, 60, 20], [16, 11, 59, 60], [16, 12, 59, 60], [19, 8, 20, 20], [19, 9, 25, 22],
+        [19, 10, 30, 25], [19, 11, 60, 30], [19, 12, 70, 60], [19, 13, 88, 75], [19, 14, 90, 90], [19, 15, 92, 90]];
+      const sessions = plan.map(([d, h, sec, tg], i) => {
+        const at = new Date(2026, 9, d, h).getTime();
+        return { id: 'p' + i, dogId: 'charlie', contextId: 'home', startedAt: at, endedAt: at + sec * 1000, durationSec: sec, targetSec: tg ?? null, result: 'good' };
+      });
+      localStorage.setItem('alone-training:v2', JSON.stringify({ schemaVersion: 2, lang: 'sv', onboarded: true, dogs: [{ id: 'charlie', name: 'Charlie' }],
+        contexts: [{ id: 'home', name: 'Ensam Hemma hela lägenheten' }, { id: 'car', name: 'Övning sovrummet' }, { id: 'outside-shop', name: 'Test' }],
+        selectedContextId: 'home', active: null, pending: null, sessions }));
+    });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    const fits = () => p.evaluate(() => document.documentElement.scrollHeight <= innerHeight);
+    assert.ok(await fits(), 'main screen');
+    assert.ok(await p.isVisible('#history-link'));
+    await p.screenshot({ path: OUT + '32-fits-one-screen-sv.png' });
+    const morning = await t('#target-value');
+    // Reported case: stopped after 1:05 for other reasons, "went well" → the same suggestion.
+    await p.tap('#start-btn');
+    await p.clock.runFor(65_000);
+    await p.tap('#end-btn');
+    assert.ok(await fits(), 'result screen');
+    await p.tap('#good-btn');
+    // After rating, the comment is shown again and can be written or changed.
+    assert.ok(await p.isVisible('#saved-comment'));
+    assert.equal(await t('#onset-saved'), 'Sparat · 1 min 05 s · gick bra');
+    await p.fill('#saved-comment', 'Avbröt själv – inte på grund av hunden.');
+    await p.screenshot({ path: OUT + '33-saved-comment-sv.png' });
+    await p.tap('#saved-done');
+    assert.equal(await t('#target-value'), morning);
+    assert.equal(await t('#target-basis'), 'Senaste passet blev kortare – det sänker inte förslaget.');
+    const last = await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.at(-1));
+    assert.equal(last.comment, 'Avbröt själv – inte på grund av hunden.');
+    assert.ok(await fits(), 'main screen after the session');
     await c.close();
   });
 
@@ -1636,7 +1721,7 @@ try {
     await p.tap('#start-btn');
     const n = (await calls()).length;
     assert.equal((await calls()).at(-1)[0], 'start');
-    for (const view of ['history', 'settings', 'data', 'help', 'home']) await open(p, view);
+    for (const view of ['start', 'history', 'settings', 'data', 'help', 'home']) await open(p, view);
     assert.equal((await calls()).length, n); // no end, no restart
     await p.tap('#end-btn');
     assert.deepEqual((await calls()).at(-1), ['end']);
@@ -1676,7 +1761,7 @@ try {
     const short = await p.locator('#chart .bar.good .mark').last().boundingBox();
     const plot = await p.locator('#chart svg').boundingBox();
     assert.ok(short.height > plot.height * 0.15, `a 1:20 bar is ${short.height}px high`);
-    assert.match(await t('#chart-clip-note'), /^↑ Mycket längre pass är avkortade/);
+    assert.match(await t('#chart-clip-note'), /^↑ Långa pass är avkortade/);
     // Tapping a cut-off bar gives the exact time.
     await p.locator('#chart .bar.clipped').last().tap();
     assert.match(await t('#chart-detail'), /50 min 00 s · Gick inte bra/);

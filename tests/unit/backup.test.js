@@ -215,3 +215,16 @@ test('import review: counts new and existing sessions, comments and setting diff
   assert.deepEqual(sum.changes.map((c) => c.kind), ['dog', 'lang']);
   assert.equal(JSON.stringify(phone), before);
 });
+
+// ---------- v0.11: "Start here" ticks ----------
+import { setPrepDone, createInitialState as freshState } from '../../src/training.js';
+
+test('"Start here" ticks are in the backup, read back, and unknown steps are dropped', () => {
+  let st = setPrepDone(setPrepDone(freshState(), 'prepStep3', true), 'prepStep1', true);
+  st = setPrepDone(st, 'not-a-step', true);
+  assert.deepEqual(st.prepDone, ['prepStep1', 'prepStep3']);
+  const parsed = parseBackup(buildBackup(st));
+  assert.deepEqual(parsed.prepDone, ['prepStep1', 'prepStep3']);
+  assert.deepEqual(parseBackup(JSON.stringify({ sessions: [] })).prepDone, []); // older backups
+  assert.deepEqual(setPrepDone(st, 'prepStep1', false).prepDone, ['prepStep3']);
+});

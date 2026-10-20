@@ -22,6 +22,7 @@ export function createInitialState() {
     active: null, // session currently running
     pending: null, // session ended but not yet rated
     lastBackupAt: null, // when a backup file was last saved
+    prepDone: [], // "Start here" steps the user has ticked (never used by sessions or suggestions)
     sessions: [],
   };
 }
@@ -84,6 +85,23 @@ export function cleanComment(text) {
 export function setPendingComment(state, text) {
   if (!state.pending) return state;
   return { ...state, pending: { ...state.pending, comment: cleanComment(text) } };
+}
+
+// ---------- "Start here": ticked practice steps ----------
+// Only a checklist: no sessions, no suggestion, no progression.
+
+export const PREP_STEPS = Object.freeze(['prepStep1', 'prepStep2', 'prepStep3', 'prepStep4', 'prepStep5', 'prepStep6', 'prepStep7', 'prepStep8']);
+
+export function cleanPrepDone(list) {
+  return Array.isArray(list) ? PREP_STEPS.filter((k) => list.includes(k)) : [];
+}
+
+export function setPrepDone(state, key, done) {
+  if (!PREP_STEPS.includes(key)) return state;
+  const set = new Set(cleanPrepDone(state.prepDone));
+  if (done) set.add(key);
+  else set.delete(key);
+  return { ...state, prepDone: PREP_STEPS.filter((k) => set.has(k)) };
 }
 
 // ---------- first start ----------

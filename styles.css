@@ -604,3 +604,46 @@ h1, .card h2 { overflow-wrap: anywhere; }
 .overview-chart .dot.good { fill: var(--good); stroke: var(--surface); stroke-width: 1.5; }
 .overview-chart .dot.bad { fill: var(--surface); stroke: var(--bad); stroke-width: 2; }
 .overview-chart .trend { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; opacity: 0.85; }
+
+/* ---------- v0.11: the main screen fits one phone screen ---------- */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.app { padding-top: calc(env(safe-area-inset-top) + 10px); padding-bottom: calc(env(safe-area-inset-bottom) + 12px); gap: 12px; }
+.eyebrow { display: none; }
+.top { align-items: center; }
+.top-text { min-width: 0; flex: 1; }
+.top h1 { font-size: 23px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.menu-btn { width: 44px; height: 44px; margin-top: 0; }
+.menu { top: 52px; }
+.panel { gap: 10px; padding: 0; }
+.segmented .seg { min-height: 44px; font-size: 14px; }
+.target { padding: 0; }
+.stepper { gap: 16px; margin: 0; }
+.target-value { font-size: 40px; }
+.step-btn { width: 44px; height: 44px; }
+.target-basis { margin-top: 0; }
+.chips { margin-top: 6px; }
+.chip { min-height: 36px; }
+.history-facts { margin-top: 8px; padding-top: 6px; }
+.history-facts .target-history { font-size: 12px; line-height: 1.35; }
+.btn-huge { min-height: 76px; font-size: 22px; }
+#view-training .btn-huge { min-height: 132px; font-size: 24px; } /* while training: as big and clear as before */
+#progress { padding: 12px 14px 10px; }
+#progress .card-head { margin-bottom: 0; align-items: baseline; }
+#progress .card-head .chart-note { margin: 0; font-size: 12px; }
+#progress .legend { font-size: 12px; width: 100%; }
+#progress .detail { margin-top: 2px; font-size: 13px; }
+#progress .chart-note { margin: 0; }
+.progress-links .btn-link { padding: 6px; font-size: 14px; }
+.menu-start { color: var(--primary); font-weight: 600; }
+:root[data-theme="dark"] .menu-start { color: var(--ink); }
+.start-card h3 { margin: 6px 0 0; font-size: 16px; }
+.start-card .start-lead { margin: 0; color: var(--ink); }
+.start-how { margin: 0; padding-left: 20px; display: grid; gap: 6px; color: var(--ink-2); font-size: 15px; }
+.start-observe { margin: 0; color: var(--ink-2); font-size: 15px; }
+.start-card .prep-list { margin: 4px 0; }
+.start-card .prep-list .check { font-size: 15px; }
+#view-onset .comment-field .hint { margin: 0; }
+.onset-block { display: grid; gap: 10px; }
+#progress .detail { font-size: 12px; min-height: 0; margin-top: 0; }
+#progress .detail:empty { display: none; }
+#progress .card-head { gap: 4px 8px; }

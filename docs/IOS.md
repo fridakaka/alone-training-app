@@ -112,6 +112,12 @@ Tryck ▶︎ i Xcode. Dina data finns kvar (installera ovanpå, radera inte appe
 `npm run ios:sync` är steget som lägger in den nya webbkoden i iPhone-appen – utan det kör
 appen den gamla versionen. Widget-steget (4–6) behöver inte göras om.
 
+### Kontrollera på iPhone efter v0.11
+1. Startsidan får plats utan att du behöver scrolla (på en vanlig iPhone).
+2. Efter **Gick bra** eller **Gick inte bra** syns kommentarsrutan; tryck **Klar** (eller **Spara/Vet inte**).
+3. Avsluta ett pass tidigare än förslaget och välj Gick bra – förslaget ska vara detsamma som före.
+4. **☰ → Otränad hund? Börja här**: bocka i något, stäng appen helt och öppna igen – bockarna ska finnas kvar.
+
 ### Kontrollera på iPhone efter v0.9
 Spara gärna en säkerhetskopia först (**☰ → Dina data → Spara säkerhetskopia**).
 1. Startsidan: hundens namn, spår, förslag, **Starta träning** och grafen – inga långa listor. Menyn **☰** uppe till höger.

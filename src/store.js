@@ -7,6 +7,7 @@
 
 import {
   createInitialState, DEFAULT_CONTEXTS, SCHEMA_VERSION, cleanContextName, MAX_CONTEXT_NAME, MAX_DOG_NAME,
+  cleanPrepDone,
 } from './training.js';
 import { LANGS } from './i18n.js';
 
@@ -97,6 +98,7 @@ function normalizeV2(data) {
     // Data saved before these fields existed belongs to an existing user.
     onboarded: data.onboarded === false ? false : true,
     lang: LANGS.includes(data.lang) ? data.lang : null,
+    prepDone: cleanPrepDone(data.prepDone),
   };
   if (!contexts.some((c) => c.id === state.selectedContextId)) state.selectedContextId = 'home';
   return state;

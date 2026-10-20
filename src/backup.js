@@ -2,7 +2,7 @@
 // Restoring MERGES: sessions already on the phone are never removed or changed.
 
 import {
-  RESULTS, DEFAULT_CONTEXTS, cleanContextName, validateContextNames, validateDogName, cleanComment,
+  RESULTS, DEFAULT_CONTEXTS, cleanContextName, validateContextNames, validateDogName, cleanComment, cleanPrepDone,
 } from './training.js';
 import { LANGS } from './i18n.js';
 
@@ -18,6 +18,7 @@ export function buildBackup(state, now = Date.now()) {
       lang: state.lang ?? null,
       contexts: state.contexts,
       sessions: state.sessions,
+      prepDone: cleanPrepDone(state.prepDone), // "Start here" ticks (v0.11)
     },
     null,
     2,
@@ -64,6 +65,7 @@ export function parseBackup(text) {
     // null when the backup doesn't have it (older backups) – then nothing changes.
     dogName: typeof rawDog === 'string' && !validateDogName(rawDog) ? cleanContextName(rawDog) : null,
     lang: LANGS.includes(data.lang) ? data.lang : null,
+    prepDone: cleanPrepDone(data.prepDone), // missing in older backups = none
   };
 }
 

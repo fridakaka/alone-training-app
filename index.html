@@ -34,6 +34,7 @@
       <!-- The menu opens separate pages; the main screen keeps only what you need to train. -->
       <nav id="menu" class="menu" data-i18n-aria="menuAria" aria-label="Menu" hidden>
         <button type="button" class="menu-item" data-nav="home" data-i18n="navHome">Main screen</button>
+        <button type="button" class="menu-item menu-start" data-nav="start" data-i18n="startMenu">Untrained dog? Start here</button>
         <button type="button" class="menu-item" data-nav="history" data-i18n="historyTitle">Previous sessions</button>
         <button type="button" class="menu-item" data-nav="settings" data-i18n="settingsTitle">Settings</button>
         <button type="button" class="menu-item" data-nav="data" data-i18n="dataTitle">Your data</button>
@@ -130,17 +131,26 @@
         <button id="discard-btn" class="btn-link" type="button" data-i18n="discard">Discard this session</button>
       </section>
 
-      <!-- State 3b: optional follow-up after "Didn't go well" -->
+      <!-- State 3b: saved. The comment again (editable); after "Didn't go well" also the
+           optional worry question. -->
       <section id="view-onset" class="panel" hidden>
         <p id="onset-saved" class="label"></p>
-        <h2 id="onset-question" class="question">Roughly when did Charlie start to get worried?</h2>
-        <p class="label small" data-i18n="onsetHint">Optional. Minutes and seconds from the start.</p>
-        <div class="time-inputs center">
-          <label><input id="onset-min" type="number" inputmode="numeric" min="0" max="999" data-i18n-aria="minutesAria" aria-label="Minutes"> <span data-i18n="unitMin">min</span></label>
-          <label><input id="onset-sec" type="number" inputmode="numeric" min="0" max="59" data-i18n-aria="secondsAria" aria-label="Seconds"> <span data-i18n="unitSec">s</span></label>
+        <div id="onset-block" class="onset-block">
+          <h2 id="onset-question" class="question">Roughly when did Charlie start to get worried?</h2>
+          <p class="label small" data-i18n="onsetHint">Optional. Minutes and seconds from the start.</p>
+          <div class="time-inputs center">
+            <label><input id="onset-min" type="number" inputmode="numeric" min="0" max="999" data-i18n-aria="minutesAria" aria-label="Minutes"> <span data-i18n="unitMin">min</span></label>
+            <label><input id="onset-sec" type="number" inputmode="numeric" min="0" max="59" data-i18n-aria="secondsAria" aria-label="Seconds"> <span data-i18n="unitSec">s</span></label>
+          </div>
+          <p id="onset-error" class="form-error" role="alert"></p>
         </div>
-        <p id="onset-error" class="form-error" role="alert"></p>
-        <div class="choices">
+        <label class="comment-field">
+          <span class="comment-label"><span data-i18n="commentLabel">Comment</span> <span class="muted" data-i18n="commentOptional">(optional)</span></span>
+          <textarea id="saved-comment" rows="2" maxlength="500" data-i18n-placeholder="commentPlaceholder"></textarea>
+          <span class="hint" data-i18n="savedCommentHint"></span>
+        </label>
+        <button id="saved-done" class="btn btn-primary" type="button" data-i18n="done" hidden>Done</button>
+        <div id="onset-actions" class="choices">
           <button id="onset-unknown" class="btn btn-quiet" type="button" data-i18n="onsetUnknown">Don't know</button>
           <button id="onset-save" class="btn btn-primary" type="button" data-i18n="save">Save</button>
         </div>
@@ -148,7 +158,8 @@
 
       <section id="progress" class="card" aria-labelledby="progress-title">
         <div class="card-head">
-          <h2 id="progress-title"><span data-i18n="progressTitle">Progress</span> <span class="dot">·</span> <span id="progress-context" class="muted">Home</span></h2>
+          <h2 id="progress-title"><span data-i18n="progressTitle">Progress</span><span class="sr-only"> · <span id="progress-context">Home</span></span></h2>
+          <p id="chart-note" class="chart-note" hidden></p>
           <div class="legend" aria-hidden="true">
             <span><i class="swatch good"></i><span data-i18n="good">Went well</span></span>
             <span><i class="swatch bad"></i><span data-i18n="bad">Didn't go well</span></span>
@@ -157,7 +168,6 @@
         </div>
         <div id="chart"></div>
         <p id="chart-detail" class="detail" aria-live="polite"></p>
-        <p id="chart-note" class="chart-note" hidden></p>
         <p id="chart-clip-note" class="chart-note" data-i18n="chartClipNote" hidden></p>
         <p id="empty" class="empty"></p>
         <button id="prep-link" class="btn-link prep-link" type="button" data-i18n="prepLink" hidden></button>
@@ -178,6 +188,30 @@
         <p id="history-empty" class="empty" hidden></p>
         <ol id="history" class="history"></ol>
         <button id="history-more" class="btn-link" type="button" hidden></button>
+      </div>
+    </section>
+
+    <!-- "Start here" for a completely untrained dog. The ticks are saved, but they are only a
+         checklist: no sessions, no chart, no suggestion, no progression. -->
+    <section id="page-start" class="page" aria-labelledby="start-title" hidden>
+      <button type="button" class="back-btn" data-nav="home"><span aria-hidden="true">‹</span> <span data-i18n="back">Back</span></button>
+      <div class="card start-card">
+        <h2 id="start-title" class="page-title" tabindex="-1" data-i18n="startTitle">Completely untrained dog? Start here</h2>
+        <p class="start-lead" data-i18n="startLead"></p>
+        <h3 data-i18n="startHowTitle">How it works</h3>
+        <ul class="start-how">
+          <li data-i18n="startHow1"></li>
+          <li data-i18n="startHow2"></li>
+          <li data-i18n="startHow3"></li>
+          <li data-i18n="startHow4"></li>
+        </ul>
+        <h3 data-i18n="startStepsTitle">Steps to practise</h3>
+        <p class="hint" data-i18n="startStepsHint"></p>
+        <ul id="prep-list" class="prep-list"><!-- filled by app.js --></ul>
+        <p class="start-observe" data-i18n="startObserve"></p>
+        <p class="hint" data-i18n="startSaved"></p>
+        <p class="hint" data-i18n="startNote"></p>
+        <button id="prep-reset" class="btn-link" type="button" data-i18n="startReset" hidden>Remove all ticks</button>
       </div>
     </section>
 
@@ -234,14 +268,6 @@
         <details id="help-intro" class="help">
           <summary data-i18n="helpIntroSummary">About Alone Time</summary>
           <div id="help-intro-body" class="intro"><!-- same text as the welcome screen --></div>
-        </details>
-        <!-- Optional. Nothing here is saved or counted: no sessions, no chart, no suggestion. -->
-        <details id="help-prep" class="help">
-          <summary data-i18n="prepSummary">Getting ready at home (optional)</summary>
-          <p data-i18n="prepLead"></p>
-          <ul id="prep-list" class="prep-list"><!-- filled from i18n --></ul>
-          <p data-i18n="prepObserve"></p>
-          <p class="muted" data-i18n="prepNote"></p>
         </details>
         <details id="help-calc" class="help">
           <summary data-i18n="helpCalcSummary">How is the time suggestion calculated?</summary>

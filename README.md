@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.10)
+# Alone Time – dog alone-training tracker (v0.11)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -26,6 +26,25 @@ or train without a target.
 
 Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
 The app is a training journal – not advice, and it can't tell how long a dog can be alone.
+
+## Faster, fairer progress; one screen; "Start here" (v0.11)
+
+- **Time suggestion follows a current level** session by session (details in
+  [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md)): two good sessions at the time → +10 %,
+  also on the same day; a good session that was ended early **never lowers** the suggestion
+  (three in a row do make it follow); after a hard session the suggestion drops, and good sessions
+  then lead **back to the earlier level in at most 3 steps**.
+- **Main screen fits one iPhone screen** (tested at 390 × 763, with long place names and history lines).
+- **After rating** (went well or not) the comment is shown again and can be written or changed.
+- **"Untrained dog? Start here"** right below the main screen in the menu: how gradual
+  alone training works, and 8 small practice steps whose ticks are saved (also in the backup).
+  The ticks never affect sessions, the chart or the suggestion.
+
+<p>
+<img src="docs/screenshots/32-fits-one-screen-sv.png" width="220" alt="Main screen on one iPhone screen">
+<img src="docs/screenshots/33-saved-comment-sv.png" width="220" alt="Comment after rating">
+<img src="docs/screenshots/29-start-here-sv.png" width="220" alt="Start here for an untrained dog">
+</p>
 
 ## Readable chart (v0.10)
 

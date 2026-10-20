@@ -19,6 +19,8 @@ import {
   validateDogName,
   setPendingComment,
   completeOnboarding,
+  setPrepDone,
+  PREP_STEPS,
   MAX_CONTEXT_NAME,
   MAX_DOG_NAME,
   MAX_COMMENT,
@@ -94,28 +96,42 @@ function renderIntro(box) {
   box.replaceChildren(p('introLead', 'intro-lead'), steps, example, p('introNote', 'intro-note'));
 }
 
-// "Getting ready at home": examples with tick boxes for the moment. Nothing is saved or
-// counted – no session, no chart, no suggestion, no progression.
+// "Start here": practice steps with saved ticks. Only a checklist – never a session, never
+// used by the chart or the suggestion, no points and nothing that unlocks.
 function renderPrep() {
   $('prep-list').replaceChildren(
-    ...['prepStep1', 'prepStep2', 'prepStep3', 'prepStep4'].map((k) => {
+    ...PREP_STEPS.map((k) => {
       const li = document.createElement('li');
       const label = document.createElement('label');
       label.className = 'check';
       const box = Object.assign(document.createElement('input'), { type: 'checkbox' });
+      box.dataset.step = k;
       label.append(box, Object.assign(document.createElement('span'), { textContent: t(k) }));
       li.append(label);
       return li;
     }),
   );
+  renderPrepTicks();
 }
+
+function renderPrepTicks() {
+  const done = new Set(state.prepDone ?? []);
+  for (const box of $('prep-list').querySelectorAll('input[data-step]')) box.checked = done.has(box.dataset.step);
+  $('prep-reset').hidden = done.size === 0;
+}
+
+$('prep-list').addEventListener('change', (e) => {
+  const box = e.target.closest('input[data-step]');
+  if (box) update(setPrepDone(state, box.dataset.step, box.checked));
+});
+$('prep-reset').addEventListener('click', () => update({ ...state, prepDone: [] }));
 
 // ---------- pages and menu ----------
 // The main screen keeps only what you need to train. Previous sessions, settings, data and
 // help are separate pages. A page is only a view: a running session is in `state` and keeps
 // running (and saving) whatever page is shown.
 
-const PAGES = ['history', 'settings', 'data', 'help'];
+const PAGES = ['start', 'history', 'settings', 'data', 'help'];
 const pageFromUrl = () => (PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'home');
 let view = pageFromUrl();
 let menuOpen = false;
@@ -182,11 +198,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-$('prep-link').addEventListener('click', () => {
-  go('help');
-  $('help-prep').open = true;
-  $('help-prep').querySelector('summary').focus({ preventScroll: true });
-});
+$('prep-link').addEventListener('click', () => go('start'));
 
 function renderPages() {
   $('page-home').hidden = view !== 'home';
@@ -411,22 +423,37 @@ $('result-comment').addEventListener('input', () => {
   saveState(state);
 });
 
-$('good-btn').addEventListener('click', () => update(recordResult(syncPendingComment(), RESULTS.GOOD)));
-$('bad-btn').addEventListener('click', () => {
-  // Saved right away, so nothing is lost; the follow-up question is optional.
-  const next = recordResult(syncPendingComment(), RESULTS.BAD);
-  onsetFor = next.sessions[next.sessions.length - 1]?.id ?? null;
+// Saved right away, so nothing is lost. The next screen shows the comment again (editable),
+// and after "Didn't go well" also asks the optional worry question.
+function rate(result) {
+  const next = recordResult(syncPendingComment(), result);
+  savedFor = next.sessions[next.sessions.length - 1]?.id ?? null;
+  savedFilled = null;
   clearOnsetInputs();
   update(next);
-});
+}
+$('good-btn').addEventListener('click', () => rate(RESULTS.GOOD));
+$('bad-btn').addEventListener('click', () => rate(RESULTS.BAD));
 
 function syncPendingComment() {
   return setPendingComment(state, $('result-comment').value);
 }
 
-// ---------- optional follow-up: when did worry start? ----------
+// ---------- after rating: comment (editable) and, after "didn't go well", the worry question ----------
 
-let onsetFor = null; // id of the session just saved as "didn't go well" (memory only)
+let savedFor = null; // id of the session just saved (memory only)
+let savedFilled = null; // the comment box was filled for this session
+
+$('saved-comment').addEventListener('input', () => {
+  if (!savedFor) return;
+  state = updateSession(state, savedFor, { comment: $('saved-comment').value });
+  saveState(state);
+});
+
+$('saved-done').addEventListener('click', () => {
+  savedFor = null;
+  render();
+});
 
 const readMinSec = (minId, secId) => {
   const mRaw = $(minId).value.trim();
@@ -447,23 +474,23 @@ function clearOnsetInputs() {
 }
 
 $('onset-unknown').addEventListener('click', () => {
-  onsetFor = null;
+  savedFor = null;
   render();
 });
 
 $('onset-save').addEventListener('click', () => {
-  const session = state.sessions.find((x) => x.id === onsetFor);
+  const session = state.sessions.find((x) => x.id === savedFor);
   const input = readMinSec('onset-min', 'onset-sec');
   if (input.error) return void ($('onset-error').textContent = input.error);
   if (!session || input.empty) {
-    onsetFor = null; // saving without a time = unknown
+    savedFor = null; // saving without a time = unknown
     return render();
   }
   if (!isValidOnset(input.value, session.durationSec)) {
     $('onset-error').textContent = t('onsetTooLong', { time: formatTarget(session.durationSec) });
     return;
   }
-  onsetFor = null;
+  savedFor = null;
   update(setAnxietyOnset(state, session.id, input.value));
 });
 $('discard-btn').addEventListener('click', () => update(discardPending(state)));
@@ -502,9 +529,9 @@ function render() {
   }
 
   const mode = state.active ? 'training' : state.pending ? 'result' : 'ready';
-  if (mode !== 'ready' || !state.sessions.some((x) => x.id === onsetFor)) onsetFor = null;
+  if (mode !== 'ready' || !state.sessions.some((x) => x.id === savedFor)) savedFor = null;
   renderPages();
-  const askOnset = mode === 'ready' && onsetFor != null;
+  const askOnset = mode === 'ready' && savedFor != null; // the "saved" screen
   $('view-onset').hidden = !askOnset;
   $('view-ready').hidden = mode !== 'ready' || askOnset;
   $('view-training').hidden = mode !== 'training';
@@ -526,9 +553,17 @@ function render() {
   clearInterval(tick);
   if (mode === 'ready') renderReady();
   if (askOnset) {
-    const s = state.sessions.find((x) => x.id === onsetFor);
-    $('onset-saved').textContent = t('onsetSaved', { dur: formatDuration(s.durationSec) });
+    const s = state.sessions.find((x) => x.id === savedFor);
+    const isBad = s.result === RESULTS.BAD;
+    $('onset-saved').textContent = t(isBad ? 'onsetSaved' : 'savedGood', { dur: formatDuration(s.durationSec) });
     $('onset-question').textContent = t('onsetQuestion', { dog: dogName() });
+    $('onset-block').hidden = !isBad;
+    $('onset-actions').hidden = !isBad;
+    $('saved-done').hidden = isBad;
+    if (savedFilled !== s.id) {
+      $('saved-comment').value = s.comment ?? '';
+      savedFilled = s.id;
+    }
   }
   if (mode === 'training') {
     $('training-label').textContent = t('trainingLabel', { dog: dogName() });
@@ -550,6 +585,7 @@ function render() {
 
   renderProgress();
   renderHistory();
+  renderPrepTicks();
   renderData();
   renderSettingsInfo();
 }
@@ -706,10 +742,10 @@ function renderReady() {
     .join('');
 }
 
-// "12 September" (with the year when it isn't this year).
+// "12 Sep" (with the year when it isn't this year) – short, so the main screen fits.
 function longDate(ms) {
   const d = new Date(ms);
-  const opts = { day: 'numeric', month: 'long' };
+  const opts = { day: 'numeric', month: 'short' };
   if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
   return d.toLocaleDateString(locale(), opts);
 }
@@ -737,7 +773,7 @@ function renderProgress() {
   $('chart-note').hidden = hiddenBars <= 0;
   $('chart-note').textContent =
     hiddenBars > 0 ? t('chartNote', { shown: MAX_BARS, total: sessions.length }) : '';
-  $('chart-detail').textContent = hasData ? t('chartTap') : '';
+  $('chart-detail').textContent = ''; // filled when a bar is tapped (keeps the screen short)
   $('chart-clip-note').hidden = !hasClippedBars(sessions);
   $('overview-btn').hidden = sessions.length < 2;
   $('empty').hidden = hasData;
@@ -1118,6 +1154,8 @@ $('import-form').addEventListener('submit', (e) => {
   let next = mergeSessions(state, parsed.sessions);
   const { added, skipped } = next;
   next = next.state;
+  // "Start here" ticks from the backup are added; none are removed.
+  for (const k of parsed.prepDone ?? []) next = setPrepDone(next, k, true);
   if (mode === 'welcome') {
     const lang = parsed.lang ?? welcomeLang;
     next = completeOnboarding(next, {
@@ -1164,4 +1202,4 @@ $('edit-form').addEventListener('input', () => ($('edit-error').textContent = ''
 $('view-onset').addEventListener('input', () => ($('onset-error').textContent = ''));
 
 // Comments: never more than MAX_COMMENT characters (also enforced when saving).
-for (const id of ['result-comment', 'edit-comment']) $(id).maxLength = MAX_COMMENT;
+for (const id of ['result-comment', 'saved-comment', 'edit-comment']) $(id).maxLength = MAX_COMMENT;

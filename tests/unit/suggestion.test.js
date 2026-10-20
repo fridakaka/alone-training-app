@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  suggestTarget, establishedLevel, anchor, weights, raiseFrom, stableLevelBefore, KINDS,
+  suggestTarget, anchor, raiseFrom, stableLevelBefore, KINDS, HARD, NOTES,
   SUGGESTION_SETTINGS as S,
 } from '../../src/suggestion.js';
 import { formatTarget } from '../../src/progression.js';
@@ -24,8 +24,9 @@ const OLD_TWO_HOURS = () => [good(16, 7200), good(15, 7200), good(14, 7200)];
 
 test('settings are named, adjustable and in one place', () => {
   assert.equal(S.WINDOW_DAYS, 7);
-  assert.equal(S.MAX_SESSIONS, 5);
   assert.equal(S.RAISE_RATIO, 0.1);
+  assert.equal(S.CONFIRMS_TO_RAISE, 2);
+  assert.equal(S.RECOVERY_STEPS, 3);
   assert.ok(Object.isFrozen(S));
   assert.equal('RETURN_RATIO' in S, false); // no automatic share of an old level
   assert.equal('MIN_GOOD_SEC' in S, false); // short sessions are not discarded
@@ -106,12 +107,12 @@ test('3: same history + worry right at the start → no positive time from the o
 // 4
 test('4: 5 min then 2 h the same day → 2 h is neither the suggestion nor offered as Repeat', () => {
   const r = suggest([good(0, 300, { hour: 8 }), good(0, 7200, { hour: 11 })]);
-  assert.equal(r.kind, KINDS.LIMITED);
-  assert.equal(r.sec, 300);
+  assert.equal(r.level, 300); // both support 5 min – the 2 h session alone supports nothing more
+  assert.equal(r.sec, 330); // two good sessions at 5 min → small increase
   assert.equal(r.repeatSec, null);
-  // Same without planned times, and with a 2 h session that was planned as 5 min.
+  // Same with a 2 h session that was planned as 5 min.
   const planned = suggest([good(0, 300, { hour: 8, targetSec: 300 }), good(0, 7200, { hour: 11, targetSec: 300 })]);
-  assert.equal(planned.sec, 300);
+  assert.equal(planned.sec, 330);
 });
 
 test('a single session anchors only its planned time; without a plan it sets no target', () => {
@@ -127,8 +128,9 @@ test('5: several 5-min sessions on different days + one 2-hour session → stays
     const fives = [good(5, 300), good(4, 300), good(3, 300), good(2, 300)];
     const long = good(order === 'late' ? 1 : 6, 7200);
     const r = suggest(order === 'late' ? [...fives, long] : [long, ...fives]);
-    assert.equal(r.level, 300, order);
     assert.equal(r.sec, 330, order); // +10 % from 5 min – not ~28 min (the mean), not 2 h
+    // Late: the 2 h session also confirms the increase to 5:30 – but supports nothing more.
+    assert.equal(r.level, order === 'late' ? 330 : 300, order);
     assert.equal(r.repeatSec, order === 'late' ? null : 300);
   }
 });
@@ -145,10 +147,10 @@ test('6: after a restart, new longer good sessions on different days are confirm
 // 7
 test('7: one long good session after several short ones → no immediate long level', () => {
   const r = suggest([good(3, 60), good(2, 60), good(1, 1200)]);
-  assert.equal(r.level, 60);
-  assert.equal(r.sec, 65);
+  assert.equal(r.sec, 65); // 20 min confirms the small increase – nothing more
+  assert.equal(r.note, NOTES.ONCE);
   assert.equal(r.repeatSec, null); // 20 min is not offered as Repeat
-  // ...but once a second day supports the longer time, it is confirmed.
+  // ...but once a second session supports the longer time, it is confirmed.
   assert.equal(suggest([good(3, 60), good(2, 1200), good(1, 1200)]).level, 1200);
 });
 
@@ -177,11 +179,11 @@ test('unknown worry time: never "end time − 10 %"; a clearly shorter earlier t
 });
 
 // 10
-test('10: two very short good sessions after a hard one support the short level only', () => {
+test('10: very short good sessions after a hard one neither lower nor lift the limit', () => {
   const r = suggest([good(5, 1200), good(4, 1200), bad(3, 1200, { anxietyOnsetSec: 600 }), good(2, 3), good(1, 3)]);
-  assert.equal(r.level, 3);
-  assert.equal(r.sec, 3);
-  assert.notEqual(r.sec, 1200);
+  assert.equal(r.kind, KINDS.EASIER);
+  assert.equal(r.sec, 480); // still 80 % of the worry time (10 min) – never back to 20 min by itself
+  assert.equal(r.hard, HARD.RECENT);
   // One short good session after the hard one: still capped below the worry time.
   const one = suggest([good(5, 1200), bad(3, 1200, { anxietyOnsetSec: 60 }), good(2, 300)]);
   assert.equal(one.kind, KINDS.EASIER);
@@ -209,19 +211,97 @@ test('12: sessions marked "don\'t count" stay in the journal but do not steer th
   assert.equal(suggest([good(2, 600, { uncertain: true }), good(1, 600, { uncertain: true })]).kind, KINDS.TOO_LITTLE);
 });
 
-// 9 (weak same-day evidence)
-test('many sessions on one day are weaker than sessions on several days', () => {
+test('sessions on the same day count too: two good ones raise, staying at the same time does not ratchet', () => {
   const sameDay = [9, 10, 11, 12, 13].map((h) => good(1, 300, { hour: h }));
-  assert.equal(suggest(sameDay).kind, KINDS.LIMITED);
-  assert.equal(suggest(sameDay).sec, 300);
-  assert.equal(suggest([5, 4, 3, 2, 1].map((d) => good(d, 300))).kind, KINDS.RAISE);
-  assert.ok(weights(sameDay).reduce((a, b) => a + b, 0) < 1);
+  assert.equal(suggest(sameDay).kind, KINDS.RAISE);
+  assert.equal(suggest(sameDay).sec, 330); // never above what was actually reached + 10 %
 });
 
-test('only the 5 most recent sessions from the last 7 days are current basis', () => {
-  assert.equal(suggest([good(8, 300), good(1, 300)]).kind, KINDS.LIMITED);
-  const r = suggest([bad(6, 300), good(5, 300), good(4, 300), good(3, 300), good(2, 300), good(1, 300)]);
-  assert.equal(r.kind, KINDS.RAISE);
+test('a break of 7 days starts over; the old level only shows as history', () => {
+  const r = suggest([good(20, 600), good(19, 600), good(1, 300, { targetSec: 300 })]);
+  assert.equal(r.kind, KINDS.LIMITED);
+  assert.equal(r.sec, 300);
+  assert.equal(r.earlierLevel, 600);
+  const later = suggest([bad(6, 300), good(5, 300), good(4, 300), good(3, 300), good(2, 300), good(1, 300)]);
+  assert.equal(later.kind, KINDS.RAISE);
+});
+
+// ---------- v0.11: the current level is carried forward ----------
+const g = (day, hour, sec, targetSec = null) => good(day, sec, { hour, targetSec });
+const b = (day, hour, sec, targetSec = null, anxietyOnsetSec = null) => bad(day, sec, { hour, targetSec, anxietyOnsetSec });
+
+test('reported: a good session that ends early (other reasons) never lowers the suggestion', () => {
+  // Built up during one day, as in the report.
+  const day = [g(1, 8, 20, 20), g(1, 9, 25, 22), g(1, 10, 30, 25), g(1, 11, 60, 30), g(1, 12, 70, 60), g(1, 13, 88, 75), g(1, 14, 90, 90), g(1, 15, 92, 90)];
+  const morning = suggest(day);
+  // Next day: ended after 1:05 for other reasons, marked "went well".
+  const after = suggest([...day, g(0, 8, 65, morning.sec)]);
+  assert.equal(after.sec, morning.sec);
+  assert.equal(after.note, NOTES.SHORTER);
+  assert.ok(morning.sec >= 90);
+});
+
+test('reported: after a hard session, good sessions lead back to the earlier level in at most 3 steps', () => {
+  const before = [g(4, 9, 58, 20), g(4, 10, 60, 20), g(4, 11, 59, 60), g(4, 12, 59, 60)];
+  assert.equal(suggest(before).level, 60);
+  let ss = [...before, b(1, 9, 60, 60)]; // didn't go well at 1:00, worry time unknown
+  assert.equal(suggest(ss).kind, KINDS.HARD_CHOOSE);
+  const steps = [];
+  for (const [i, sec] of [20, 20, 22, 30, 60].entries()) {
+    ss = [...ss, g(1, 10 + i, sec, sec)];
+    steps.push(suggest(ss).sec);
+  }
+  // Two good sessions to restart (20 s), then 3 steps back to 1:00 – not 0:30 as before.
+  assert.deepEqual(steps, [null, 20, 30, 45, 60]);
+  const r = suggest(ss);
+  assert.equal(r.kind, KINDS.REPEAT);
+  assert.equal(r.note, NOTES.BACK);
+});
+
+test('recovery after a known worry time: lower, then 3 steps back, then normal increases', () => {
+  let ss = [g(5, 9, 600), g(5, 10, 600), g(4, 9, 660, 660), g(4, 10, 660, 660), b(3, 9, 400, 700, 240)];
+  let r = suggest(ss);
+  assert.equal(r.kind, KINDS.EASIER);
+  assert.equal(r.sec, 180); // 80 % of the worry time 4:00
+  assert.equal(r.hard, HARD.LATEST);
+  const seq = [];
+  for (let i = 0; i < 5; i++) {
+    ss = [...ss, g(3, 10 + i, r.sec, r.sec)];
+    r = suggest(ss);
+    seq.push([r.kind, r.sec]);
+  }
+  assert.deepEqual(seq, [
+    [KINDS.RECOVER, 330], [KINDS.RECOVER, 480], [KINDS.REPEAT, 660], [KINDS.REPEAT, 660], [KINDS.RAISE, 720],
+  ]);
+});
+
+test('during the way back, a session that ends early is neutral and a new hard session keeps the goal', () => {
+  let ss = [g(5, 9, 600), g(5, 10, 600), b(3, 9, 600, 600, 300)]; // level 10:00, worry at 5:00 → 4:00
+  assert.equal(suggest(ss).sec, 240);
+  ss = [...ss, g(3, 10, 240, 240)];
+  const step1 = suggest(ss);
+  assert.equal(step1.kind, KINDS.RECOVER);
+  assert.equal(step1.backTo, 600);
+  ss = [...ss, g(3, 11, 60, step1.sec)]; // stopped early
+  assert.equal(suggest(ss).sec, step1.sec);
+  ss = [...ss, b(3, 12, 300, step1.sec, 200)]; // worry at 3:20
+  const again = suggest(ss);
+  assert.equal(again.sec, 150); // 80 % = 2:40, rounded down to 2:30
+  ss = [...ss, g(3, 13, 150, 150)];
+  assert.equal(suggest(ss).backTo, 600); // the goal is still the level from before the first setback
+});
+
+test('worry from the start: no automatic time until two good sessions, then back towards the earlier level', () => {
+  let ss = [g(3, 9, 300), g(3, 10, 300), b(2, 9, 120, 300, 3)];
+  assert.equal(suggest(ss).kind, KINDS.WORRIED_AT_ONCE);
+  ss = [...ss, g(2, 10, 10, 10)];
+  assert.equal(suggest(ss).sec, null);
+  ss = [...ss, g(2, 11, 10, 10)];
+  assert.equal(suggest(ss).sec, 10);
+  ss = [...ss, g(2, 12, 10, 10)];
+  const r = suggest(ss);
+  assert.equal(r.kind, KINDS.RECOVER);
+  assert.equal(r.sec, 20); // never more than doubled in one step
 });
 
 test('the earlier stable level never becomes a floor or target', () => {
@@ -255,8 +335,8 @@ test('building blocks', () => {
   assert.equal(anchor([]), null);
   assert.equal(anchor([good(1, 7200)]), null);
   assert.equal(anchor([good(1, 7200, { targetSec: 30 })]), 30);
-  const pairs = [good(3, 300), good(2, 600), good(1, 7200)].map((s, i, a) => [s, weights(a)[i]]);
-  assert.equal(establishedLevel(pairs), 600);
+  assert.equal(anchor([good(3, 300), good(2, 600), good(1, 7200)]), 600);
+  assert.equal(anchor([good(1, 7200, { targetSec: 30 })], S, { singleAllowed: false }), null);
 });
 
 test('deterministic, and dependent only on the injected time', () => {
@@ -264,4 +344,21 @@ test('deterministic, and dependent only on the injected time', () => {
   assert.deepEqual(suggest(ss), suggest(ss));
   assert.equal(suggest(ss, NOW + 30 * DAY).kind, KINDS.BREAK);
   assert.equal(formatTarget(suggest(ss).sec), '5:30');
+});
+
+test('one shorter session never lowers the suggestion, but three in a row make it follow them', () => {
+  let ss = [g(3, 9, 600), g(3, 10, 600), g(3, 11, 600)]; // level 10:00, suggestion 11:00
+  const start = suggest(ss).sec;
+  assert.equal(start, 660);
+  ss = [...ss, g(2, 9, 120)];
+  assert.equal(suggest(ss).sec, start);
+  ss = [...ss, g(2, 10, 120)];
+  assert.equal(suggest(ss).sec, start);
+  ss = [...ss, g(2, 11, 130)];
+  const r = suggest(ss);
+  assert.equal(r.note, NOTES.FOLLOW);
+  assert.ok(r.sec <= 135, `follows the short sessions: ${r.sec}`);
+  // A session at the suggestion in between resets the run.
+  const mixed = suggest([g(3, 9, 600), g(3, 10, 600), g(3, 11, 600), g(2, 9, 120), g(2, 10, 660), g(2, 11, 120), g(2, 12, 120)]);
+  assert.ok(mixed.sec >= 660);
 });

@@ -23,8 +23,9 @@ export function resultText(s) {
 }
 
 const W = 340;
-const H = 200;
-const PAD = { top: 24, right: 8, bottom: 26, left: 40 };
+const H = 150;
+// Extra room at the top only when a cut-off bar needs its label.
+const padFor = (clipped) => ({ top: clipped ? 22 : 10, right: 8, bottom: 24, left: 40 });
 
 const STEPS = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200];
 
@@ -77,9 +78,10 @@ export function renderChart(allSessions) {
   const sessions = allSessions.slice(-MAX_BARS);
   if (sessions.length === 0) return '';
 
+  const { top, ticks } = niceScale(chartCap(sessions));
+  const PAD = padFor(sessions.some((s) => s.durationSec > top));
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
-  const { top, ticks } = niceScale(chartCap(sessions));
   const slot = plotW / MAX_BARS; // same bar width from the first session on
   const barW = Math.max(3, Math.min(24, slot - 6));
   const y = (v) => PAD.top + plotH - (Math.min(v, top) / top) * plotH;

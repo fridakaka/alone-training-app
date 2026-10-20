@@ -9,16 +9,23 @@
 // - The longest good session is history only. It is computed separately from the suggestion
 //   and never feeds back into it.
 
-import { KINDS, HARD } from './suggestion.js';
+import { KINDS, HARD, NOTES, SUGGESTION_SETTINGS } from './suggestion.js';
 import { formatTarget } from './progression.js';
 
 /** @returns {{ key: string, params?: object }} an i18n key (+ parameters) for the suggestion */
 export function explanationKey(suggestion) {
-  const { kind, sec, hard, fromOnset } = suggestion;
+  const { kind, sec, hard, fromOnset, note, step, backTo } = suggestion;
   const recent = hard === HARD.RECENT;
+  // A good session that ended before the suggestion never lowers it – say so.
+  if (note === NOTES.SHORTER && [KINDS.RAISE, KINDS.REPEAT, KINDS.RECOVER].includes(kind)) return { key: 'explainShorter' };
   switch (kind) {
-    case KINDS.RAISE: return { key: 'explainRaise' };
-    case KINDS.REPEAT: return { key: 'explainRepeat' };
+    case KINDS.RAISE: return { key: note === NOTES.FOLLOW ? 'explainFollow' : 'explainRaise' };
+    case KINDS.REPEAT:
+      if (note === NOTES.FOLLOW) return { key: 'explainFollow' };
+      if (note === NOTES.BACK) return { key: 'explainBack' };
+      return { key: note === NOTES.ONCE ? 'explainRepeatOnce' : 'explainRepeat' };
+    case KINDS.RECOVER:
+      return { key: 'explainRecover', params: { n: step ?? 1, of: SUGGESTION_SETTINGS.RECOVERY_STEPS, time: formatTarget(backTo ?? sec ?? 0) } };
     case KINDS.LIMITED:
       return sec == null ? { key: 'explainLimitedNone' } : { key: 'explainLimited', params: { time: formatTarget(sec) } };
     case KINDS.EASIER:
