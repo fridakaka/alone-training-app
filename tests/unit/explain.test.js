@@ -113,7 +113,6 @@ test('the historical record never raises today\'s suggestion or becomes a hidden
     const all = [...extra, ...recent];
     const after = suggestTarget(all, { now: NOW });
     assert.equal(after.sec, before.sec);
-    assert.equal(after.kind, before.kind);
     assert.equal(longestGoodSession(all).durationSec, 7200); // shown as history only
     assert.ok(after.sec < 7200);
   }

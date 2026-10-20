@@ -44,8 +44,20 @@ struct AloneTimeLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
-                Image(systemName: "door.left.hand.open")
+                // The target next to the running time (only shown – it never ends the session).
+                if let target = context.state.targetSeconds, target > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "flag.checkered")
+                        Text(shortTime(target))
+                            .monospacedDigit()
+                    }
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
                     .foregroundStyle(accent)
+                } else {
+                    Image(systemName: "door.left.hand.open")
+                        .foregroundStyle(accent)
+                }
             } compactTrailing: {
                 Text(context.state.startedAt, style: .timer)
                     .monospacedDigit()
@@ -57,6 +69,12 @@ struct AloneTimeLiveActivity: Widget {
             }
         }
     }
+}
+
+// "0:45", "1:30", "1:05:00" – the same format as in the app.
+private func shortTime(_ seconds: Int) -> String {
+    let h = seconds / 3600, m = (seconds % 3600) / 60, s = seconds % 60
+    return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
 }
 
 private struct LockScreenView: View {

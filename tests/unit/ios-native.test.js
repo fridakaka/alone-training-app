@@ -76,6 +76,10 @@ test('native files: attributes are identical in app and widget, plugin matches t
   const widget = await read('native/ios/AloneTimeWidget/AloneTimeLiveActivity.swift');
   assert.match(widget, /Text\(context\.state\.startedAt, style: \.timer\)/);
   assert.doesNotMatch(widget, /\.end\(/);
+  // The compact Dynamic Island (shown while in another app) shows the target next to the time.
+  const compact = widget.slice(widget.indexOf('compactLeading'), widget.indexOf('compactTrailing'));
+  assert.match(compact, /context\.state\.targetSeconds/);
+  assert.match(compact, /shortTime\(target\)/);
 });
 
 test('iOS project: native files are in the App target, Live Activities enabled, plugin registered', async () => {

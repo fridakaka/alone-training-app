@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.11)
+# Alone Time – dog alone-training tracker (v0.12)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -26,6 +26,15 @@ or train without a target.
 
 Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
 The app is a training journal – not advice, and it can't tell how long a dog can be alone.
+
+## Typical level; target in the Dynamic Island (v0.12)
+
+- The suggestion builds on the **typical level**: the longest time that at least 3 of the latest
+  10 good sessions reached. One or two extreme sessions (very long or very short) no longer move it,
+  and after a hard session the way back leads to that typical level – not to a few long sessions
+  from long ago. See [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
+- iPhone: the compact Live Activity (Dynamic Island, while in another app) shows the target next
+  to the running time.
 
 ## Faster, fairer progress; one screen; "Start here" (v0.11)
 

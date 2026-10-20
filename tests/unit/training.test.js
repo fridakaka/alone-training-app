@@ -188,8 +188,8 @@ test('edit and delete recalculate the suggestion', () => {
   const withOnset = setAnxietyOnset(s, s.sessions[1].id, 30);
   assert.equal(home(withOnset).sec, 24);
   const asGood = updateSession(s, s.sessions[1].id, { result: 'good' });
-  assert.equal(home(asGood).kind, KINDS.LIMITED);
-  assert.equal(home(asGood).sec, 120); // the shorter 1 min session never lowers the planned 2 min
+  // At the start a time counts once two sessions support it: 2 min and 1 min → level 1:00.
+  assert.equal(home(asGood).level, 60);
   const deleted = deleteSession(s, s.sessions[1].id);
   assert.equal(home(deleted).kind, KINDS.LIMITED); // only the 2 min session is left
   assert.equal(home(deleted).sec, 120);

@@ -112,6 +112,14 @@ Tryck ▶︎ i Xcode. Dina data finns kvar (installera ovanpå, radera inte appe
 `npm run ios:sync` är steget som lägger in den nya webbkoden i iPhone-appen – utan det kör
 appen den gamla versionen. Widget-steget (4–6) behöver inte göras om.
 
+### Efter v0.12: kör även widget-steget
+Live Activity-filerna har ändrats (målet visas i Dynamic Island). Efter `npm run ios:sync`, kör också:
+```
+npm run ios:widget
+```
+Tryck sedan ▶︎ i Xcode. Starta ett pass med ett mål, gå till en annan app: uppe i den svarta
+rutan ska målet (🏁 1:30) synas till vänster och tiden till höger.
+
 ### Kontrollera på iPhone efter v0.11
 1. Startsidan får plats utan att du behöver scrolla (på en vanlig iPhone).
 2. Efter **Gick bra** eller **Gick inte bra** syns kommentarsrutan; tryck **Klar** (eller **Spara/Vet inte**).

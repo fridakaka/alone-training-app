@@ -1,4 +1,4 @@
-# Time suggestion model (v0.11)
+# Time suggestion model (v0.12)
 
 Code: `src/suggestion.js` (pure, deterministic, reference time `now` injected).
 Tests: `tests/unit/suggestion.test.js` and `tests/unit/explain.test.js`.
@@ -16,23 +16,29 @@ it took to get there the first time. v0.10 looked only at the 5 newest sessions 
 and required support on two different days – with many short sessions per day that window lost the
 level after a few sessions.
 
-v0.11 instead carries a **current level** forward, session by session, in each place (since the
-latest break of 7 days):
+### v0.12: the typical level
+
+v0.11 carried a level forward and let **two** good sessions move it. Two ~18-minute sessions among
+many 10 s–2 min sessions then became "the level" – and, after a hard session, the level to return
+to. v0.12 builds on a **typical level** instead:
+
+> **Typical level** = the longest time that at least **3 of the latest 10 good sessions** reached
+> (≥ 90 %). One or two extreme sessions – very long or very short – don't move it. When older
+> sessions drop out of the latest 10, the level follows the newer ones.
 
 | Event | What happens |
 |---|---|
-| Good session at the suggestion (≥ 95 %) | Counts as a confirmation. **Two confirmations → +10 %** (rounded down), also on the same day |
-| Good session that ended earlier | **Neutral** – never lowers the suggestion ("The latest session was shorter – that doesn't lower the suggestion.") |
-| **Three** good sessions in a row that ended earlier | The level follows them (the longest time at least two of them support), so an old level isn't kept forever |
-| Two good sessions longer than the level | The level moves to the time they both support, directly |
-| Session that didn't go well | Lower: 80 % of the worry time (if entered, always below it), else 80 % of a clearly shorter time that went well, else **no automatic time** until 2 good sessions have followed. Worry within 10 s → no automatic time |
-| Good sessions after a setback | **Back to the level from before** in at most **3 steps** (each confirmed session one third of the way, never more than doubling in one step) – then normal +10 % steps |
+| The two latest sessions went well at the level (≥ 95 %) | **+10 %** (rounded down), also on the same day |
+| Good session that ended earlier | **Neutral** – skipped; never lowers the suggestion or takes an increase away |
+| A longer time reached by 3 of the latest 10 | The level moves there directly |
+| Session that didn't go well | Lower: 80 % of the worry time (if entered), else 80 % of a clearly shorter time that went well, else **no automatic time** until 2 good sessions have followed. Worry within 10 s → no automatic time |
+| Good sessions after it | Back to the **typical level from before the hard session** in at most **3 steps** (each confirmed session one third of the way, never more than doubling) |
 | 7 days without sessions | Start over, no automatic time. The earlier stable level is shown as history only |
+| Start (1–2 sessions) | A cautious anchor: what both sessions reached, or one session's *planned* time |
 
-The rules that protect against extreme values are kept: one single session never sets a level
-(it only anchors its *planned* time), one long session can't make the suggestion jump, the
-end time of a hard session is never treated as tolerated, and the earlier stable level is never a
-target, a share of one or a floor.
+The rules that protect against extreme values are kept: a single session never sets a level, one
+long session can't make the suggestion jump, the end time of a hard session is never treated as
+tolerated, and the earlier stable level is never a target, a share of one or a floor.
 
 ## Earlier stable level (history only)
 
@@ -103,8 +109,8 @@ From "No target", **+** opens time entry instead of guessing a time. Tapping the
 | 3 | same + worry at 0 s | no time – "Worry from the start…" |
 | 4 | 5 min, then 2 h, same day | level 5:00 → **5:30**; 2 h not offered as Repeat |
 | 5 | 4 × 5 min on different days + 1 × 2 h | **5:30** (level 5:00) |
-| 6 | after the break: 10 s, then 5 min on two days | level **5:00** directly → 5:30 |
-| 7 | 1 min, 1 min, then 20 min | **1:05**; 20 min not offered (one long session supports nothing more) |
+| 6 | after the break: 10 s, then 3 × 5 min | level **5:00** directly → 5:30 |
+| 7 | 1 min, 1 min, then 20 min (or 2 × 20 min) | **1:05** – level 1:00; 3 × 20 min are needed for a 20 min level |
 | 8 | 3 × 5 min, then hard (unknown) | no time; with worry at 200 s → 2:30 |
 | 9 | 10 min, 10 min, then 1 h hard with worry at 30 s | **0:24** |
 | 10 | 20 min × 2, hard (worry 10 min), then 3 s × 2 | **8:00** – below the worry time; very short sessions neither lower nor lift it |
@@ -117,7 +123,8 @@ From "No target", **+** opens time entry instead of guessing a time. Tapping the
 | 17 | reported: built up to ~1:30 in one day, then good 1:05 (ended early) | **same suggestion as before** |
 | 18 | reported: level 1:00, hard at 1:00 (unknown worry), then 20, 20, 22, 30, 60 s | none → 0:20 → 0:30 → 0:45 → **1:00** (back in 3 steps) |
 | 19 | level 11:00, worry at 4:00, then following the suggestions | 3:00 → 5:30 → 8:00 → **11:00** → 11:00 → 12:00 |
-| 20 | three good sessions in a row far below the suggestion | the suggestion follows them |
+| 20 | 3 × 10 min, then many 2 min sessions | unchanged for 7 shorter sessions; after the 8th the level follows them |
+| 21 | reported: two ~18 min sessions among many 10 s–2 min sessions, then a hard one | goal ≤ 1:30, never 15 min; back at ~1:30 after a few good sessions |
 
 ## What the app cannot know
 
