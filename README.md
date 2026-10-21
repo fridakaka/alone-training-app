@@ -27,6 +27,14 @@ or train without a target.
 Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
 The app is a training journal – not advice, and it can't tell how long a dog can be alone.
 
+## TestFlight preparation (iPhone only)
+
+`npm run ios:sync` / `ios:setup` / `ios:widget` now make the app and the Live Activity widget
+**iPhone only** in every build configuration, keep the widget's version equal to the app's, and set
+`ITSAppUsesNonExemptEncryption = NO` – with small text edits that leave Xcode's own project format
+alone. `npm run ios:check` checks the real project before a TestFlight build and lists exactly which
+files to commit. Steps, data safety and the TestFlight checklist (Swedish): [docs/TESTFLIGHT.md](docs/TESTFLIGHT.md).
+
 ## Calmer whole-course chart; start over (v0.13)
 
 - **The whole course** shows, per day, the longest session that went well (dot) and the shortest

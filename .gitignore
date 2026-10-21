@@ -1,3 +1,5 @@
 node_modules/
 test-results/
 www/
+# An accidental second clone inside the repository – never commit it.
+/alone-training-app/

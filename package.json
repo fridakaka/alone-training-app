@@ -14,7 +14,8 @@
     "ios:open": "npx cap open ios",
     "ios:setup": "node scripts/ios-setup.mjs",
     "ios:widget": "node scripts/ios-install-widget.mjs",
-    "ios:assets": "node scripts/make-ios-assets.mjs"
+    "ios:assets": "node scripts/make-ios-assets.mjs",
+    "ios:check": "node scripts/ios-check.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",

@@ -1,5 +1,7 @@
 # Alone Time som iPhone-app (prototyp)
 
+> Ska appen till TestFlight? Se [TESTFLIGHT.md](TESTFLIGHT.md).
+
 En liten, körbar iOS-prototyp. **Inte** en App Store-version, och den publiceras inte någonstans.
 Webbappen (PWA:n) på GitHub Pages fungerar som förut, parallellt.
 
