@@ -19,6 +19,7 @@ import {
   validateDogName,
   setPendingComment,
   completeOnboarding,
+  createInitialState,
   setPrepDone,
   PREP_STEPS,
   MAX_CONTEXT_NAME,
@@ -1053,6 +1054,45 @@ $('csv-btn').addEventListener('click', async () => {
   if (await shareOrDownload(buildCsv(state), backupFileName('csv'), 'text/csv')) {
     status(t('dataCsvDone'));
   }
+});
+
+// ---------- start over: delete all data (after a clear confirmation) ----------
+
+const resetDialog = $('reset-dialog');
+
+$('reset-btn').addEventListener('click', () => {
+  $('reset-understood').checked = false;
+  $('reset-confirm').disabled = true;
+  resetDialog.showModal();
+});
+$('reset-understood').addEventListener('change', () => ($('reset-confirm').disabled = !$('reset-understood').checked));
+$('reset-cancel').addEventListener('click', () => resetDialog.close());
+$('reset-backup').addEventListener('click', () => $('backup-btn').click());
+
+$('reset-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!$('reset-understood').checked) return;
+  // Older copies kept by earlier versions (before a restore, unreadable data, v0.1) go too.
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith('alone-training:')) localStorage.removeItem(k);
+  } catch {}
+  // Everything that only lives on this screen is cleared as well.
+  for (const k of Object.keys(draftTargets)) delete draftTargets[k];
+  for (const k of Object.keys(showAllHistory)) delete showAllHistory[k];
+  savedFor = null;
+  namesOffer = [];
+  historyCtx = null;
+  pushedFromHome = false;
+  welcomeLang = getLang(); // the welcome starts in the language used so far
+  $('welcome-dog').value = '';
+  $('welcome-error').textContent = '';
+  status('');
+  resetDialog.close();
+  // A fresh start: the welcome screen, as on a new phone. (Saved over the old data – also in the
+  // iOS app's own storage.) A running session ends, and so does its Live Activity.
+  view = 'home';
+  history.replaceState(null, '', location.pathname + location.search);
+  update(createInitialState());
 });
 
 // ---------- import a backup: always a review first, nothing changes before "Import" ----------

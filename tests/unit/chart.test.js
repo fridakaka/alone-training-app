@@ -81,3 +81,26 @@ test('the whole course: one dot per session, period filter, nothing when empty',
   assert.equal(renderOverview(s, { from: Date.UTC(2027, 0, 1) }), '');
   assert.equal(renderOverview([]), '');
 });
+
+// ---------- v0.13: the whole course, one day at a time ----------
+import { dailySummary } from '../../src/chart.js';
+
+test('per day: the longest session that went well and the shortest that did not', () => {
+  const at = (d, h) => new Date(2026, 9, d, h).getTime();
+  const s = (d, h, sec, result, extra = {}) => ({ id: `${d}-${h}`, startedAt: at(d, h), durationSec: sec, result, ...extra });
+  const days = dailySummary([
+    s(1, 8, 30, 'good'), s(1, 9, 90, 'good'), s(1, 10, 7200, 'bad'), s(1, 11, 40, 'bad'),
+    s(2, 9, 3000, 'good', { uncertain: true }), s(2, 10, 20, 'good'),
+    s(3, 9, 600, 'bad'),
+  ]);
+  assert.equal(days.length, 3);
+  assert.equal(days[0].good.durationSec, 90);
+  assert.equal(days[0].bad.durationSec, 40); // not the 2 h one
+  assert.equal(days[1].good.durationSec, 20); // "don't count" left out
+  assert.equal(days[1].bad, null);
+  assert.equal(days[2].good, null);
+  // At most two marks per day in the chart.
+  const svg = renderOverview([s(1, 8, 30, 'good'), s(1, 9, 90, 'good'), s(1, 10, 7200, 'bad'), s(1, 11, 40, 'bad'), s(2, 9, 60, 'good')]);
+  assert.equal((svg.match(/class="dot /g) || []).length, 3);
+  assert.ok(!svg.includes('2 h 00 min')); // the 2 h session is not drawn – the 40 s one is
+});

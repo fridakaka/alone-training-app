@@ -1,4 +1,4 @@
-# Alone Time – dog alone-training tracker (v0.12)
+# Alone Time – dog alone-training tracker (v0.13)
 
 A calm, phone-first app for tracking Charlie's alone training in three places:
 **Home**, **Car** and **Outside shop**.
@@ -26,6 +26,19 @@ or train without a target.
 
 Full rules and preliminary parameters: [docs/SUGGESTION-MODEL.md](docs/SUGGESTION-MODEL.md).
 The app is a training journal – not advice, and it can't tell how long a dog can be alone.
+
+## Calmer whole-course chart; start over (v0.13)
+
+- **The whole course** shows, per day, the longest session that went well (dot) and the shortest
+  that didn't (ring), plus the line for the typical time that went well – instead of every session.
+- **Your data → Start over → Delete all data…**: deletes everything in the app on this phone (also
+  the iOS app's own storage) after ticking "I understand that everything is deleted". The app then
+  opens on the welcome screen, e.g. for a new dog. A backup can be saved from the same sheet first.
+
+<p>
+<img src="docs/screenshots/31-overview-sv.png" width="220" alt="The whole course, one day at a time">
+<img src="docs/screenshots/34-reset-sv.png" width="220" alt="Delete all data, with confirmation">
+</p>
 
 ## Typical level; target in the Dynamic Island (v0.12)
 

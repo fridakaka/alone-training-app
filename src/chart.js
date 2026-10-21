@@ -161,8 +161,29 @@ export function smoothedGood(sessions, n = SMOOTH_SESSIONS) {
   return goods.map((s, i) => ({ at: s.startedAt, sec: median(goods.slice(Math.max(0, i - n + 1), i + 1).map((g) => g.durationSec)) }));
 }
 
+// One entry per calendar day: the longest session that went well and the shortest one that
+// didn't – the two that say most about the day. ("Don't count" sessions are left out.) Pure.
+export function dailySummary(sessions) {
+  const days = new Map();
+  for (const s of sessions) {
+    if (!Number.isFinite(s.startedAt) || !Number.isFinite(s.durationSec)) continue;
+    const d = new Date(s.startedAt);
+    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    const day = days.get(key) ?? { at: new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime(), good: null, bad: null };
+    if (s.result === RESULTS.GOOD && !s.uncertain) {
+      if (!day.good || s.durationSec > day.good.durationSec) day.good = s;
+    } else if (s.result === RESULTS.BAD) {
+      if (!day.bad || s.durationSec < day.bad.durationSec) day.bad = s;
+    }
+    days.set(key, day);
+  }
+  return [...days.values()].filter((d) => d.good || d.bad).sort((a, b) => a.at - b.at);
+}
+
 /**
  * Overview of the course in one place. Log scale, so 10 s and 2 h are both readable.
+ * Per day: the longest session that went well (dot) and the shortest that didn't (ring),
+ * and a line for the typical time that went well (median of the latest 5, at the end of each day).
  * @param sessions sessions of one dog in one place
  * @param opts.from  only sessions from this time (ms); null = from the start
  * @returns {string} SVG ('' if none)
@@ -171,18 +192,30 @@ export function renderOverview(allSessions, { from = null } = {}) {
   const sessions = allSessions
     .filter((s) => Number.isFinite(s.startedAt) && (from == null || s.startedAt >= from))
     .sort((a, b) => a.startedAt - b.startedAt);
-  if (!sessions.length) return '';
+  const days = dailySummary(sessions);
+  if (!days.length) return '';
+
+  // The line: the typical good time as it stood at the end of each day.
+  const smooth = smoothedGood(sessions);
+  const line = days
+    .map((d) => {
+      const end = d.at + 12 * 3600 * 1000;
+      const last = smooth.filter((p) => p.at < end).pop();
+      return last ? { at: d.at, sec: last.sec } : null;
+    })
+    .filter(Boolean);
 
   const plotW = OW - OPAD.left - OPAD.right;
   const plotH = OH - OPAD.top - OPAD.bottom;
-  const secs = sessions.map((s) => Math.max(1, s.durationSec));
-  const lo = [...LOG_TICKS].reverse().find((v) => v <= Math.min(...secs)) ?? 1;
-  const hi = LOG_TICKS.find((v) => v >= Math.max(...secs)) ?? LOG_TICKS[LOG_TICKS.length - 1];
+  const shown = [...days.flatMap((d) => [d.good, d.bad].filter(Boolean).map((s) => s.durationSec)), ...line.map((p) => p.sec)]
+    .map((v) => Math.max(1, v));
+  const lo = [...LOG_TICKS].reverse().find((v) => v <= Math.min(...shown)) ?? 1;
+  const hi = LOG_TICKS.find((v) => v >= Math.max(...shown)) ?? LOG_TICKS[LOG_TICKS.length - 1];
   const top = hi > lo ? hi : lo * 10;
   const ly = (v) => OPAD.top + plotH - ((Math.log(Math.max(1, v)) - Math.log(lo)) / (Math.log(top) - Math.log(lo))) * plotH;
-  const t0 = from ?? sessions[0].startedAt;
-  const t1 = Math.max(sessions[sessions.length - 1].startedAt, t0 + 1);
-  const x = (ms) => OPAD.left + 6 + ((ms - t0) / (t1 - t0)) * (plotW - 12);
+  const t0 = days[0].at;
+  const t1 = Math.max(days[days.length - 1].at, t0 + 1);
+  const x = (ms) => OPAD.left + 8 + ((ms - t0) / (t1 - t0)) * (plotW - 16);
 
   const ticks = LOG_TICKS.filter((v) => v >= lo && v <= top);
   const grid = ticks
@@ -191,17 +224,15 @@ export function renderOverview(allSessions, { from = null } = {}) {
     <text class="axis" x="${OPAD.left - 6}" y="${ly(v)}" text-anchor="end" dominant-baseline="middle">${tickLabel(v)}</text>`)
     .join('');
 
-  const line = smoothedGood(sessions);
   const path = line.length > 1
     ? `<path class="trend" d="${line.map((p, i) => `${i ? 'L' : 'M'}${x(p.at).toFixed(1)},${ly(p.sec).toFixed(1)}`).join(' ')}"/>`
     : '';
 
-  const dots = sessions
-    .map((s) => {
-      const label = `${dateFmt(s.startedAt)} · ${formatDuration(s.durationSec)} · ${resultText(s)}`;
-      return `<circle class="dot ${s.result}" cx="${x(s.startedAt).toFixed(1)}" cy="${ly(s.durationSec).toFixed(1)}" r="4" role="img" aria-label="${label}"/>`;
-    })
-    .join('');
+  const dot = (s) => {
+    const label = `${dateFmt(s.startedAt)} · ${formatDuration(s.durationSec)} · ${resultText(s)}`;
+    return `<circle class="dot ${s.result}" cx="${x(new Date(s.startedAt).setHours(12, 0, 0, 0)).toFixed(1)}" cy="${ly(s.durationSec).toFixed(1)}" r="4.5" role="img" aria-label="${label}"/>`;
+  };
+  const dots = days.map((d) => [d.bad, d.good].filter(Boolean).map(dot).join('')).join('');
 
   return `
 <svg class="chart overview-chart" viewBox="0 0 ${OW} ${OH}" role="group" aria-label="${t('overviewAria')}">
@@ -209,7 +240,7 @@ export function renderOverview(allSessions, { from = null } = {}) {
   ${path}
   ${dots}
   <text class="axis" x="${OPAD.left}" y="${OH - 8}" text-anchor="start">${dateFmt(t0)}</text>
-  <text class="axis" x="${OW - OPAD.right}" y="${OH - 8}" text-anchor="end">${dateFmt(t1)}</text>
+  ${days.length > 1 ? `<text class="axis" x="${OW - OPAD.right}" y="${OH - 8}" text-anchor="end">${dateFmt(t1)}</text>` : ''}
 </svg>`;
 }
 

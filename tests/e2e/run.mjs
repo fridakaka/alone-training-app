@@ -894,6 +894,7 @@ try {
     // "Keep my names" path.
     const c2 = await browser.newContext({ ...phone, serviceWorkers: 'block' });
     const p2 = await c2.newPage();
+    watch(p2);
     await gotoApp(p2);
     const kept = await importFile(p2, renamedBackup); // box not ticked → own names kept
     assert.match(kept.settings, /instead of/);
@@ -1211,6 +1212,7 @@ try {
   await step('icons referenced by the manifest and the page exist', async () => {
     const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
+    watch(p);
     await p.goto(APP);
     const manifest = await (await p.request.get(APP + 'manifest.webmanifest')).json();
     const links = await p.evaluate(() => [...document.querySelectorAll('link[rel~="icon"], link[rel="apple-touch-icon"]')].map((l) => l.getAttribute('href')));
@@ -1771,17 +1773,72 @@ try {
     await p.tap('#overview-btn');
     assert.ok(await p.isVisible('#overview-dialog'));
     assert.equal(await t('#overview-place'), 'Ensam Hemma hela lägenheten');
-    assert.equal(await p.locator('#overview-chart .dot').count(), 23);
+    // One day at a time: the longest good and the shortest hard session per day – 18 marks, not 23.
+    assert.equal(await p.locator('#overview-chart .dot').count(), 18);
     assert.equal(await p.locator('#overview-chart .trend').count(), 1);
+    assert.match(await t('#overview-dialog'), /För varje dag ser du det längsta passet som gick bra och det kortaste som inte gick bra/);
+    assert.doesNotMatch(await p.innerHTML('#overview-chart'), /2 tim 10 min/); // that day's shorter hard session is shown
     await p.screenshot({ path: OUT + '31-overview-sv.png' });
     await p.tap('[data-days="30"]');
     assert.equal(await p.getAttribute('[data-days="30"]', 'aria-pressed'), 'true');
-    assert.equal(await p.locator('#overview-chart .dot').count(), 23);
+    assert.equal(await p.locator('#overview-chart .dot').count(), 18);
     await p.tap('#overview-close');
     assert.ok(await p.isHidden('#overview-dialog'));
     // Only a view: nothing stored changes, today's suggestion is the same.
     assert.equal(await p.evaluate(() => localStorage.getItem('alone-training:v2')), before);
     assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await c.close();
+  });
+
+  await step('start over: delete all data only after a clear confirmation; a running session and its Live Activity end', async () => {
+    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const p = await c.newPage();
+    watch(p);
+    await p.addInitScript(nativeMock);
+    await gotoApp(p, { lang: 'sv', dog: 'Majken' });
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    const stored = () => p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')));
+    await p.tap('#start-btn');
+    await p.tap('#end-btn');
+    await p.tap('#good-btn');
+    await p.tap('#saved-done');
+    await open(p, 'start');
+    await p.locator('#prep-list input').first().check();
+    await home(p);
+    await p.tap('#start-btn'); // a session is running while we start over
+    await open(p, 'data');
+    await p.tap('#reset-btn');
+    assert.ok(await p.isVisible('#reset-dialog'));
+    assert.match(await t('#reset-dialog'), /Det går inte att ångra/);
+    assert.ok(await p.isDisabled('#reset-confirm')); // only after ticking
+    await p.screenshot({ path: OUT + '34-reset-sv.png' });
+    await p.tap('#reset-cancel');
+    assert.equal((await stored()).sessions.length, 1); // cancel: nothing deleted
+    await p.tap('#reset-btn');
+    assert.ok(await p.isDisabled('#reset-confirm'));
+    await p.check('#reset-understood');
+    await p.tap('#reset-confirm');
+    // A fresh start: the welcome screen, nothing left.
+    assert.ok(await p.isVisible('#welcome'));
+    const s = await stored();
+    assert.equal(s.sessions.length, 0);
+    assert.equal(s.active, null);
+    assert.equal(s.onboarded, false);
+    assert.deepEqual(s.prepDone, []);
+    assert.equal(s.dogs[0].name, 'Charlie');
+    assert.deepEqual(await p.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('alone-training:'))), ['alone-training:v2']);
+    // The iOS app's own storage is overwritten too, and the Live Activity has ended.
+    const prefs = await p.evaluate(() => JSON.parse(JSON.parse(sessionStorage.getItem('__prefs'))['alone-training:v2']));
+    assert.equal(prefs.sessions.length, 0);
+    assert.deepEqual(await p.evaluate(() => JSON.parse(sessionStorage.getItem('__calls')).at(-1)), ['end']);
+    // ...and stays empty after reopening the app; a new dog can be set up.
+    await p.reload();
+    assert.ok(await p.isVisible('#welcome'));
+    assert.equal(await t('#welcome-title'), 'Välkommen till Alone Time');
+    await p.fill('#welcome-dog', 'Sigge');
+    await p.tap('#welcome-start');
+    assert.equal(await t('h1'), 'Sigge · Hemma');
+    assert.equal(await p.locator('#history li').count(), 0);
     await c.close();
   });
 

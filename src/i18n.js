@@ -110,7 +110,9 @@ const en = {
   overviewAll: 'All',
   overviewEmpty: 'No sessions in this period.',
   overviewLegendLine: 'Typical time that went well',
-  overviewNote: 'The line is the middle value of the latest 5 sessions that went well, so single long or short sessions count less. Each step up the scale is several times longer, so both short and long sessions fit.',
+  overviewLegendGood: 'Longest that went well',
+  overviewLegendBad: "Shortest that didn't",
+  overviewNote: "The line shows the middle value of the latest 5 sessions that went well. For each day you see the longest session that went well and the shortest one that didn't.",
   close: 'Close',
   empty: 'Your {place} sessions will appear here after your first training.',
   historyTitle: 'Previous sessions',
@@ -180,6 +182,16 @@ const en = {
   restoreItemDog: 'dog “{from}” instead of “{current}”',
   restoreItemLang: '{from} instead of {current}',
 
+
+  // Start over
+  resetTitle: 'Start over',
+  resetHint: 'For example with a new dog. Deletes everything in the app on this phone.',
+  resetOpen: 'Delete all data…',
+  resetConfirmTitle: 'Delete all data?',
+  resetConfirmText: "Everything in the app is deleted from this phone: all sessions and comments, the dog's name, the place names and the ticks under Start here. It can't be undone.",
+  resetBackupHint: 'Save a backup first if you may want the history back.',
+  resetUnderstood: 'I understand that everything is deleted',
+  resetConfirm: 'Delete everything',
 
   // Import review (before anything changes)
   importTitle: 'Import backup',
@@ -364,7 +376,9 @@ const sv = {
   overviewAll: 'Allt',
   overviewEmpty: 'Inga pass under perioden.',
   overviewLegendLine: 'Typisk tid som gått bra',
-  overviewNote: 'Linjen är mittvärdet av de 5 senaste passen som gått bra, så enstaka långa eller korta pass väger mindre. Varje steg uppåt på skalan är flera gånger längre, så både korta och långa pass får plats.',
+  overviewLegendGood: 'Längsta som gick bra',
+  overviewLegendBad: 'Kortaste som inte gick bra',
+  overviewNote: 'Linjen visar mittvärdet av de 5 senaste passen som gått bra. För varje dag ser du det längsta passet som gick bra och det kortaste som inte gick bra.',
   close: 'Stäng',
   empty: 'Dina pass i {place} visas här efter första träningen.',
   historyTitle: 'Tidigare pass',
@@ -429,6 +443,15 @@ const sv = {
   restoreItemPlace: '”{from}” i stället för ”{current}”',
   restoreItemDog: 'hunden ”{from}” i stället för ”{current}”',
   restoreItemLang: '{from} i stället för {current}',
+
+  resetTitle: 'Börja om',
+  resetHint: 'Till exempel med en ny hund. Raderar allt i appen på den här telefonen.',
+  resetOpen: 'Radera all data…',
+  resetConfirmTitle: 'Radera all data?',
+  resetConfirmText: 'Allt i appen raderas från den här telefonen: alla pass och kommentarer, hundens namn, spårnamnen och bockarna under Börja här. Det går inte att ångra.',
+  resetBackupHint: 'Spara en säkerhetskopia först om du kan vilja ha historiken kvar.',
+  resetUnderstood: 'Jag förstår att allt raderas',
+  resetConfirm: 'Radera allt',
 
   importTitle: 'Importera säkerhetskopia',
   importNewOne: '1 nytt pass läggs till',

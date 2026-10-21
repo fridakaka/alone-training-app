@@ -259,6 +259,12 @@
         </div>
         <p id="data-status" class="data-status" role="status"></p>
       </div>
+      <!-- Start over: everything on this phone is deleted, after a clear confirmation. -->
+      <div class="card reset-card">
+        <h3 data-i18n="resetTitle">Start over</h3>
+        <p class="hint" data-i18n="resetHint">For example with a new dog. Deletes everything in the app on this phone.</p>
+        <button id="reset-btn" class="btn btn-quiet btn-danger" type="button" data-i18n="resetOpen">Delete all data…</button>
+      </div>
     </section>
 
     <section id="page-help" class="page" aria-labelledby="help-title" hidden>
@@ -324,8 +330,8 @@
         <button type="button" class="chip" data-days="all" data-i18n="overviewAll">All</button>
       </div>
       <div class="legend overview-legend" aria-hidden="true">
-        <span><i class="legend-dot good"></i><span data-i18n="good">Went well</span></span>
-        <span><i class="legend-dot bad"></i><span data-i18n="bad">Didn't go well</span></span>
+        <span><i class="legend-dot good"></i><span data-i18n="overviewLegendGood">Longest that went well</span></span>
+        <span><i class="legend-dot bad"></i><span data-i18n="overviewLegendBad">Shortest that didn't</span></span>
         <span><i class="legend-line"></i><span data-i18n="overviewLegendLine">Typical time that went well</span></span>
       </div>
       <div id="overview-chart"></div>
@@ -333,6 +339,24 @@
       <p class="hint" data-i18n="overviewNote"></p>
       <button id="overview-close" type="button" class="btn btn-quiet" data-i18n="close">Close</button>
     </div>
+  </dialog>
+
+  <!-- Delete all data: only after ticking that you understand. -->
+  <dialog id="reset-dialog" class="sheet" aria-labelledby="reset-title">
+    <form id="reset-form" method="dialog">
+      <h2 id="reset-title" data-i18n="resetConfirmTitle">Delete all data?</h2>
+      <p data-i18n="resetConfirmText">Everything in the app is deleted from this phone: all sessions and comments, the dog's name, the place names and the ticks under Start here. It can't be undone.</p>
+      <p class="hint" id="reset-backup-hint" data-i18n="resetBackupHint">Save a backup first if you may want the history back.</p>
+      <button id="reset-backup" type="button" class="btn btn-quiet" data-i18n="dataBackup">Save backup</button>
+      <label class="check">
+        <input id="reset-understood" type="checkbox">
+        <span data-i18n="resetUnderstood">I understand that everything is deleted</span>
+      </label>
+      <div class="sheet-actions">
+        <button id="reset-cancel" type="button" class="btn btn-quiet" data-i18n="cancel">Cancel</button>
+        <button id="reset-confirm" type="submit" class="btn btn-danger-strong" data-i18n="resetConfirm" disabled>Delete everything</button>
+      </div>
+    </form>
   </dialog>
 
   <!-- Review BEFORE an import changes anything. -->
