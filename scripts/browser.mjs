@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 export function launch() {
   const candidates = [
     process.env.CHROMIUM_PATH,
+    '/opt/pw-browsers/chromium', // preinstalled in Claude Code's cloud containers (symlink to the current version)
     '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
     '/usr/bin/chromium',
     '/usr/bin/google-chrome',
