@@ -12,8 +12,15 @@ await mkdir(OUT, { recursive: true });
 
 const server = await serve(PORT);
 const browser = await launch();
-const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
+const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'en-US' };
 const errors = [];
+
+async function newPhoneContext(options) {
+  const context = await browser.newContext(options);
+  // Keep file export tests on the browser download path on hosts that support file sharing.
+  await context.addInitScript(() => Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false }));
+  return context;
+}
 
 function watch(page) {
   page.setDefaultTimeout(8000);
@@ -75,7 +82,7 @@ async function importFile(p, file, { useSettings = false, cancel = false, input 
 }
 
 try {
-  const ctx = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+  const ctx = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
   const page = await ctx.newPage();
   watch(page);
   await page.clock.install({ time: new Date('2026-09-28T09:00:00') });
@@ -472,7 +479,7 @@ try {
   await ctx.close();
 
   await step('Restore from backup on an empty phone brings everything back; restoring twice adds nothing', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await gotoApp(p);
@@ -495,7 +502,7 @@ try {
   });
 
   await step('v0.1 data on the phone is migrated to Home and the original is kept', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     const v1 = JSON.stringify({
@@ -530,7 +537,7 @@ try {
   // Screenshots with a realistic few weeks of history, light and dark.
   for (const scheme of ['light', 'dark']) {
     await step(`screenshot with history (${scheme})`, async () => {
-      const c = await browser.newContext({ ...phone, colorScheme: scheme, serviceWorkers: 'block' });
+      const c = await newPhoneContext({ ...phone, colorScheme: scheme, serviceWorkers: 'block' });
       const p = await c.newPage();
       watch(p);
       await p.addInitScript(() => {
@@ -561,7 +568,7 @@ try {
   }
 
   await step('Show all expands the history; graph shows the latest 10 with a caption', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await p.addInitScript(() => {
@@ -593,7 +600,7 @@ try {
   });
 
   await step('type a time directly: from "No target", + asks for a time; 1-second targets work', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-01T09:00:00') });
@@ -640,7 +647,7 @@ try {
   });
 
   await step('after a break: no automatic time, earlier level only as history; a new 10 s session becomes the anchor', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-20T18:00:00') });
@@ -712,7 +719,7 @@ try {
   // ---------- v0.6: renaming places ----------
   let renamedBackup;
   await step('rename places: old Car sessions stay in "Bilburen" with the same suggestion', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', acceptDownloads: true });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', acceptDownloads: true });
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-20T18:00:00') });
@@ -873,7 +880,7 @@ try {
   });
 
   await step('restoring a backup with other names never changes names silently; the user chooses', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await gotoApp(p);
@@ -892,7 +899,7 @@ try {
     await p.reload();
     assert.deepEqual(await p.locator('#context-picker .seg').allTextContents(), ['Hela lägenheten', 'Bilburen', 'Utanför affären']);
     // "Keep my names" path.
-    const c2 = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c2 = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p2 = await c2.newPage();
     watch(p2);
     await gotoApp(p2);
@@ -904,7 +911,7 @@ try {
   });
 
   await step('names are shown as plain text (no HTML from a name)', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await gotoApp(p);
@@ -918,7 +925,7 @@ try {
 
   // ---------- v0.7: Swedish, dog name, comments, welcome ----------
   await step('Swedish all the way: welcome → timer → end with comment → worry → history → edit', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE', acceptDownloads: true });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE', acceptDownloads: true });
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-05T09:00:00') });
@@ -1032,7 +1039,7 @@ try {
   });
 
   await step('existing user: no welcome, Charlie and history kept; optional language choice; renames keep everything', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-20T18:00:00') });
@@ -1139,7 +1146,7 @@ try {
   });
 
   await step('backup with dog name, language and comments; old backups never overwrite settings', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', acceptDownloads: true });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', acceptDownloads: true });
     const p = await c.newPage();
     watch(p);
     await gotoApp(p, { lang: 'sv', dog: 'Majken' });
@@ -1160,7 +1167,7 @@ try {
     assert.deepEqual(data.contexts.map((x) => x.name), ['Hemma', 'Bilen', 'Utanför affären']);
 
     // Restore into an English "Charlie" phone: sessions + comments added, settings only offered.
-    const c2 = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c2 = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p2 = await c2.newPage();
     watch(p2);
     await gotoApp(p2);
@@ -1191,7 +1198,7 @@ try {
   });
 
   await step('dark mode, Swedish, with comments: readable, fits the phone', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', colorScheme: 'dark' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', colorScheme: 'dark' });
     const p = await c.newPage();
     watch(p);
     await gotoApp(p, { lang: 'sv', dog: 'Majken' });
@@ -1210,7 +1217,7 @@ try {
   });
 
   await step('icons referenced by the manifest and the page exist', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await p.goto(APP);
@@ -1249,7 +1256,7 @@ try {
   };
 
   await step('iOS app: Live Activity starts with a session, survives reopening, ends on End/discard; data is kept natively', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await p.addInitScript(nativeMock);
@@ -1311,7 +1318,7 @@ try {
   });
 
   await step('first start on a new phone (e.g. the iOS app): import the old backup from the welcome screen, after a review', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await p.goto(APP);
@@ -1336,7 +1343,7 @@ try {
   });
 
   await step('choosing Swedish offers Swedish names only for untouched English default names', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await p.addInitScript(() => {
@@ -1373,7 +1380,7 @@ try {
   });
 
   await step('timer stays correct when switching to another app and back', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-01T09:00:00') });
@@ -1393,7 +1400,7 @@ try {
   });
 
   await step('works offline after the first visit (service worker)', async () => {
-    const c = await browser.newContext({ ...phone });
+    const c = await newPhoneContext({ ...phone });
     const p = await c.newPage();
     watch(p);
     await gotoApp(p);
@@ -1410,7 +1417,7 @@ try {
 
   // ---------- v0.9: menu and pages, comment before rating, suggestion texts, record, getting ready ----------
   await step('menu: four separate pages, a clear way back, the phone\'s back gesture works', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await gotoApp(p);
@@ -1455,7 +1462,7 @@ try {
   });
 
   await step('a running session is never lost while moving between pages (incl. reload); both results; comment first', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-10T09:00:00') });
@@ -1536,7 +1543,7 @@ try {
   });
 
   await step('Swedish: a hard session followed by a good one – "nyligt", not "senaste"; record as history only', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-15T18:00:00') });
@@ -1604,7 +1611,7 @@ try {
   });
 
   await step('"Start here" for an untrained dog: right under the menu, ticks are saved, never logged or counted', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE', acceptDownloads: true });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE', acceptDownloads: true });
     const p = await c.newPage();
     watch(p);
     await gotoApp(p, { lang: 'sv', dog: 'Majken' });
@@ -1644,7 +1651,7 @@ try {
     const path = OUT + 'backup-prep.json';
     await dl.saveAs(path);
     assert.deepEqual(JSON.parse(await readFile(path, 'utf8')).prepDone, ['prepStep1', 'prepStep3']);
-    const c2 = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c2 = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p2 = await c2.newPage();
     watch(p2);
     await gotoApp(p2);
@@ -1669,7 +1676,7 @@ try {
 
   await step('the main screen fits one iPhone screen (also with long place names and history lines)', async () => {
     // iPhone 14/15 inside the app: 844 pt minus the status bar and the home indicator.
-    const c = await browser.newContext({ ...phone, viewport: { width: 390, height: 763 }, serviceWorkers: 'block', locale: 'sv-SE' });
+    const c = await newPhoneContext({ ...phone, viewport: { width: 390, height: 763 }, serviceWorkers: 'block', locale: 'sv-SE' });
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-20T08:07:00') });
@@ -1714,7 +1721,7 @@ try {
   });
 
   await step('iOS app: moving between pages never ends the Live Activity', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block' });
     const p = await c.newPage();
     watch(p);
     await p.addInitScript(nativeMock);
@@ -1731,7 +1738,7 @@ try {
   });
 
   await step('chart: the latest 10 zoomed in, very long sessions cut off with their time; the whole course on its own sheet', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
     const p = await c.newPage();
     watch(p);
     await p.clock.install({ time: new Date('2026-10-15T10:44:00') });
@@ -1791,7 +1798,7 @@ try {
   });
 
   await step('start over: delete all data only after a clear confirmation; a running session and its Live Activity end', async () => {
-    const c = await browser.newContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
     const p = await c.newPage();
     watch(p);
     await p.addInitScript(nativeMock);

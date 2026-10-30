@@ -7,6 +7,8 @@ import { readFile } from 'node:fs/promises';
 import { targets, iphoneOnly, syncExtensionVersions, checkProject, WIDGET_TEMPLATE_FILES } from '../../scripts/ios-project.mjs';
 
 const real = await readFile(new URL('../../ios/App/App.xcodeproj/project.pbxproj', import.meta.url), 'utf8');
+const realHasWidget = targets(real).some((t) => t.name === 'AloneTimeWidgetExtension');
+const withTestWidget = (pbx, options) => realHasWidget ? pbx : withWidget(pbx, options);
 
 const widgetConfig = (id, name, extra = '') => `
 \t\t${id} /* ${name} */ = {
@@ -61,7 +63,7 @@ function withWidget(pbx, { deviceFamily = '\n\t\t\t\tTARGETED_DEVICE_FAMILY = "1
 }
 
 test('the real project: app target found, bundle id and versions as installed today', () => {
-  const [app] = targets(real);
+  const app = targets(real).find((t) => t.productType === 'com.apple.product-type.application');
   assert.equal(app.name, 'App');
   assert.deepEqual(app.configs.map((c) => c.name), ['Debug', 'Release']);
   for (const c of app.configs) {
@@ -71,7 +73,8 @@ test('the real project: app target found, bundle id and versions as installed to
 });
 
 test('iPhone only: every configuration of the app AND the widget, nothing else changes, safe to run again', () => {
-  const before = withWidget(real);
+  // Exercise the conversion even after the real project has been committed as iPhone only.
+  const before = withTestWidget(real).replaceAll('TARGETED_DEVICE_FAMILY = 1;', 'TARGETED_DEVICE_FAMILY = "1,2";');
   const after = iphoneOnly(before);
   for (const t of targets(after)) for (const c of t.configs) assert.equal(c.deviceFamily, '1', `${t.name} ${c.name}`);
   const a = before.split('\n');
@@ -81,13 +84,13 @@ test('iPhone only: every configuration of the app AND the widget, nothing else c
   assert.deepEqual(changed, Array(4).fill('\t\t\t\tTARGETED_DEVICE_FAMILY = 1;'));
   assert.equal(iphoneOnly(after), after);
   // A configuration without the setting gets it (Xcode's default would be iPhone + iPad).
-  const missing = iphoneOnly(withWidget(real, { deviceFamily: '' }));
+  const missing = iphoneOnly(before.replace(/^\s*TARGETED_DEVICE_FAMILY = [^;]+;$/gm, ''));
   assert.ok(targets(missing).every((t) => t.configs.every((c) => c.deviceFamily === '1')));
 });
 
 test('the widget gets the same version and build number as the app', () => {
   const bumped = real.replaceAll('CURRENT_PROJECT_VERSION = 1;', 'CURRENT_PROJECT_VERSION = 7;').replaceAll('MARKETING_VERSION = 1.0;', 'MARKETING_VERSION = 1.1;');
-  const out = syncExtensionVersions(withWidget(bumped));
+  const out = syncExtensionVersions(withTestWidget(bumped));
   const widget = targets(out).find((t) => t.name === 'AloneTimeWidgetExtension');
   for (const c of widget.configs) {
     assert.equal(c.buildNumber, '7');
@@ -97,18 +100,24 @@ test('the widget gets the same version and build number as the app', () => {
 });
 
 test('the check: what is missing today, and a ready project', () => {
-  const today = checkProject(real);
+  const noWidget = realHasWidget
+    ? real.replace('productType = "com.apple.product-type.app-extension";', 'productType = "com.example.disabled-extension";')
+    : real;
+  const today = checkProject(noWidget.replaceAll('TARGETED_DEVICE_FAMILY = 1;', 'TARGETED_DEVICE_FAMILY = "1,2";'));
   assert.ok(today.problems.some((p) => /No "AloneTimeWidget" widget extension target/.test(p)));
   assert.ok(today.problems.some((p) => /TARGETED_DEVICE_FAMILY = 1,2/.test(p)));
 
   const native = ['AloneTimeActivityAttributes.swift', 'AloneTimeLiveActivity.swift', 'AloneTimeWidgetBundle.swift'];
-  const ready = syncExtensionVersions(iphoneOnly(withWidget(real)));
+  const ready = syncExtensionVersions(iphoneOnly(withTestWidget(real)));
   const ok = checkProject(ready, { widgetFiles: [...native, 'Info.plist', 'Assets.xcassets'], nativeWidgetFiles: native });
   assert.deepEqual(ok.problems, []);
 
   const leftovers = checkProject(ready, { widgetFiles: [...native, 'AppIntent.swift'], nativeWidgetFiles: native });
   assert.ok(leftovers.problems.some((p) => /template files left.*AppIntent\.swift/.test(p)));
-  const notEmbedded = checkProject(syncExtensionVersions(iphoneOnly(withWidget(real, { embed: false }))));
+  const withoutEmbed = realHasWidget
+    ? ready.replace('dstSubfolderSpec = 13;', 'dstSubfolderSpec = 0;')
+    : syncExtensionVersions(iphoneOnly(withWidget(real, { embed: false })));
+  const notEmbedded = checkProject(withoutEmbed);
   assert.ok(notEmbedded.problems.some((p) => /does not seem to embed the widget/.test(p)));
   const wrongId = checkProject(ready.replaceAll('se.fridakaka.alonetime.AloneTimeWidget', 'se.other.widget'));
   assert.ok(wrongId.problems.some((p) => /must start with "se\.fridakaka\.alonetime\."/.test(p)));
