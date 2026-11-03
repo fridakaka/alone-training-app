@@ -172,9 +172,35 @@ try {
     assert.equal(await page.locator('#history li').count(), 2);
   });
 
-  await step('tapping a bar shows its details', async () => {
+  await step('tapping a bar shows its details – and the session can be edited from there', async () => {
     await page.locator('.chart .bar').first().tap();
     assert.match(await page.textContent('#chart-detail'), /1 min 1\d s · Went well/);
+    assert.ok(await page.isVisible('#chart-edit'));
+    await page.tap('#chart-edit');
+    assert.ok(await page.isVisible('#edit-dialog'));
+    assert.equal(await page.inputValue('#edit-dur-min'), '1'); // the tapped session, not another one
+    await page.fill('#edit-comment', 'Ändrad från grafen');
+    await page.tap('#edit-save');
+    assert.ok(await page.isHidden('#edit-dialog'));
+    const first = await page.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions[0]);
+    assert.equal(first.comment, 'Ändrad från grafen');
+    assert.ok(await page.isHidden('#chart-edit')); // the chart was redrawn: nothing selected
+    await page.locator('.chart .bar').nth(1).tap();
+    await page.tap('#chart-edit');
+    await page.fill('#edit-comment', '');
+    await page.tap('#edit-cancel'); // cancel changes nothing
+    assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions[1])).comment ?? null, null);
+    // Not while a session is running.
+    await page.tap('#start-btn');
+    await page.locator('.chart .bar').first().tap({ force: true });
+    assert.ok(await page.isHidden('#chart-edit'));
+    await page.tap('#end-btn');
+    await page.tap('#discard-btn');
+    // Put the comment back as it was, so later steps see the same data.
+    await page.locator('.chart .bar').first().tap();
+    await page.tap('#chart-edit');
+    await page.fill('#edit-comment', '');
+    await page.tap('#edit-save');
   });
 
   await step('data persists after reload', async () => {

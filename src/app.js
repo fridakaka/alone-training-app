@@ -500,13 +500,23 @@ $('discard-btn').addEventListener('click', () => update(discardPending(state)));
 $('chart').addEventListener('click', (e) => showBarDetail(e.target.closest('.bar')));
 $('chart').addEventListener('focusin', (e) => showBarDetail(e.target.closest('.bar')));
 
+// The tapped bar can be edited right away – the same sheet as under Previous sessions.
+let selectedBarId = null;
+
 function showBarDetail(bar) {
   const chart = $('chart');
   chart.querySelectorAll('.bar.selected').forEach((b) => b.classList.remove('selected'));
   if (!bar) return;
   bar.classList.add('selected');
+  selectedBarId = bar.dataset.id;
   $('chart-detail').textContent = bar.getAttribute('aria-label');
+  // Not while a session is running or waiting for its result (as in the history).
+  $('chart-edit').hidden = Boolean(state.active || state.pending);
 }
+
+$('chart-edit').addEventListener('click', () => {
+  if (selectedBarId) openEditor(selectedBarId);
+});
 
 // ---------- rendering ----------
 
@@ -775,6 +785,8 @@ function renderProgress() {
   $('chart-note').textContent =
     hiddenBars > 0 ? t('chartNote', { shown: MAX_BARS, total: sessions.length }) : '';
   $('chart-detail').textContent = ''; // filled when a bar is tapped (keeps the screen short)
+  $('chart-edit').hidden = true;
+  selectedBarId = null;
   $('chart-clip-note').hidden = !hasClippedBars(sessions);
   $('overview-btn').hidden = sessions.length < 2;
   $('empty').hidden = hasData;

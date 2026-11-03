@@ -656,3 +656,8 @@ h1, .card h2 { overflow-wrap: anywhere; }
 .btn-danger-strong { background: var(--bad); color: #fff; }
 .btn-danger-strong:disabled { opacity: 0.4; cursor: default; }
 #reset-form p { margin: 0; }
+
+/* ---------- v0.14: edit a session from the chart ---------- */
+#progress .detail-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+#progress .detail-row .detail { margin: 0; }
+#chart-edit { min-height: 32px; padding: 0 12px; font-size: 13px; }
