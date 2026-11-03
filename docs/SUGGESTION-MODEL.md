@@ -29,6 +29,7 @@ to. v0.12 builds on a **typical level** instead:
 | Event | What happens |
 |---|---|
 | The two latest sessions went well at the level (≥ 95 %) | **+10 %** (rounded down), also on the same day |
+| The two latest sessions went well at the *increased* time | **+10 % from that time** (one step above the typical level at most – single long sessions still can't make it jump) |
 | Good session that ended earlier | **Neutral** – skipped; never lowers the suggestion or takes an increase away |
 | A longer time reached by 3 of the latest 10 | The level moves there directly |
 | Session that didn't go well | Lower: 80 % of the worry time (if entered), else 80 % of a clearly shorter time that went well, else **no automatic time** until 2 good sessions have followed. Worry within 10 s → no automatic time |
@@ -125,6 +126,7 @@ From "No target", **+** opens time entry instead of guessing a time. Tapping the
 | 19 | level 11:00, worry at 4:00, then following the suggestions | 3:00 → 5:30 → 8:00 → **11:00** → 11:00 → 12:00 |
 | 20 | 3 × 10 min, then many 2 min sessions | unchanged for 7 shorter sessions; after the 8th the level follows them |
 | 21 | reported: two ~18 min sessions among many 10 s–2 min sessions, then a hard one | goal ≤ 1:30, never 15 min; back at ~1:30 after a few good sessions |
+| 22 | reported: two good sessions at the suggested 0:45 | **0:50** (before: 0:45 again, although the text said "small increase") |
 
 ## What the app cannot know
 

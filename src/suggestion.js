@@ -158,22 +158,30 @@ function decide(logged, relevant, since, S) {
 
 // No hard session limits the suggestion: the level, or a small increase once the two latest
 // sessions went well at it. A session that ended earlier changes nothing.
-function atLevel(streak, level, lastGood, S, note = null) {
-  const atIt = (s) => s.result === 'good' && s.durationSec >= S.CONFIRM_TOLERANCE * level;
-  // Good sessions that ended earlier are skipped: they neither count nor take an increase away.
-  const suggestionFor = (list) => {
-    const counted = list.filter((s) => s.result !== 'good' || atIt(s)).slice(-2);
-    return counted.length === 2 && counted.every(atIt) ? raiseFrom(level, S) : level;
+function atLevel(streak, typical, lastGood, S, note = null) {
+  // What the two latest counted sessions (good ones that ended early are skipped) went well at:
+  // - the suggested increase from the typical level → raise again from THAT time
+  //   (otherwise two sessions at the increased time would just get the same time again);
+  // - the typical level itself → the small increase.
+  // Never more than one step above the typical level, so single long sessions can't make it jump.
+  const decide = (list) => {
+    const up = raiseFrom(typical, S);
+    const counted = list.filter((s) => s.result !== 'good' || s.durationSec >= S.CONFIRM_TOLERANCE * typical).slice(-2);
+    const both = (x) => counted.length === 2 && counted.every((s) => s.result === 'good' && s.durationSec >= S.CONFIRM_TOLERANCE * x);
+    if (up > typical && both(up)) return { level: up, sec: raiseFrom(up, S), last: counted[1] };
+    if (both(typical)) return { level: typical, sec: up, last: counted[1] };
+    return { level: typical, sec: typical, last: counted[counted.length - 1] };
   };
-  const sec = suggestionFor(streak);
-  const counted = streak.filter((s) => s.result !== 'good' || atIt(s)).slice(-2);
+  const now = decide(streak);
+  const { sec, level } = now;
   const out = { sec, level, lastGood };
   // "Shorter": the latest session ended before the suggestion that applied to it.
-  const shorter = lastGood && lastGood.durationSec < S.CONFIRM_TOLERANCE * suggestionFor(streak.slice(0, -1));
+  const shorter = lastGood && lastGood.durationSec < S.CONFIRM_TOLERANCE * decide(streak.slice(0, -1)).sec;
   if (note === NOTES.FOLLOW || note === NOTES.BACK) return { ...out, kind: sec > level ? KINDS.RAISE : KINDS.REPEAT, note };
   if (sec > level) return { ...out, kind: KINDS.RAISE, note: shorter ? NOTES.SHORTER : null };
   if (shorter) return { ...out, kind: KINDS.REPEAT, note: NOTES.SHORTER };
-  return { ...out, kind: KINDS.REPEAT, note: counted.length && atIt(counted[counted.length - 1]) ? NOTES.ONCE : null };
+  const once = now.last && now.last.result === 'good' && now.last.durationSec >= S.CONFIRM_TOLERANCE * typical;
+  return { ...out, kind: KINDS.REPEAT, note: once ? NOTES.ONCE : null };
 }
 
 // The latest hard session: lower (below the worry time, if known), then back to the typical

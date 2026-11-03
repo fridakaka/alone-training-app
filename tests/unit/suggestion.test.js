@@ -148,8 +148,11 @@ test('7: one long good session after several short ones → no immediate long le
   const r = suggest([good(3, 60), good(2, 60), good(1, 1200)]);
   assert.equal(r.sec, 65); // 20 min confirms the small increase – nothing more
   assert.equal(r.repeatSec, null); // 20 min is not offered as Repeat
-  // Two long sessions are still extremes; once 3 of the latest 10 reached the longer time, it counts.
-  assert.equal(suggest([good(3, 60), good(2, 1200), good(1, 1200)]).level, 60);
+  // Two long sessions are still extremes: at most one small step (1:00 → 1:05, suggestion 1:10);
+  // once 3 of the latest 10 reached the longer time, it counts.
+  const twoLong = suggest([good(3, 60), good(2, 1200), good(1, 1200)]);
+  assert.equal(twoLong.level, 65);
+  assert.equal(twoLong.sec, 70);
   assert.equal(suggest([good(4, 60), good(3, 1200), good(2, 1200), good(1, 1200)]).level, 1200);
 });
 
@@ -377,4 +380,19 @@ test('reported: two long sessions among many short ones are not a level to retur
   let x = ss;
   for (let i = 0; i < 4; i++) x = [...x, g(1, 8 + i, suggest(x).sec)];
   assert.ok(suggest(x).sec >= 80 && suggest(x).sec <= 100, `${suggest(x).sec}`);
+});
+
+test('reported: two good sessions at the increased time → the next suggestion is higher, not the same', () => {
+  // As on the phone: the sessions followed the suggested increases up to 0:45.
+  const plan = [[8, 15, 90], [9, 30, 15], [10, 14, 35], [11, 21, 35], [12, 35, 35], [13, 14, 40], [14, 30, 40], [15, 40, 40], [16, 46, 45], [17, 47, 45]];
+  const ss = plan.map(([h, sec, targetSec]) => good(0, sec, { hour: h, targetSec }));
+  const r = suggest(ss, new Date(new Date(NOW).setHours(18, 0, 0, 0)).getTime());
+  assert.equal(r.kind, KINDS.RAISE);
+  assert.equal(r.sec, 50); // not 0:45 again
+  assert.equal(r.level, 45);
+  // ...and a small step at a time: one session at 0:50 → same time once more, two → 0:55.
+  const once = suggest([...ss, good(0, 50, { hour: 18, targetSec: 50 })], NOW + 3600e3);
+  assert.equal(once.sec, 50);
+  const twice = suggest([...ss, good(0, 50, { hour: 18, targetSec: 50 }), good(0, 51, { hour: 19, targetSec: 50 })], NOW + 3600e3 * 2);
+  assert.equal(twice.sec, 55);
 });
