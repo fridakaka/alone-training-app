@@ -104,6 +104,16 @@ export function suggestTarget(sessions, { now = Date.now(), settings = SUGGESTIO
   const relevant = logged.filter(isRelevant);
   const earlierLevel = stableLevelBefore(relevant, since, S);
   const base = decide(logged, relevant, since, S);
+  // "Shorter" is only said when the latest session really ended before the suggestion that
+  // applied to IT – i.e. the suggestion computed from the sessions before it.
+  const last = relevant[relevant.length - 1];
+  if (last && last.result === 'good') {
+    const prevRelevant = relevant.slice(0, -1);
+    const prev = decide(logged.filter((x) => x !== last), prevRelevant, since, S).sec;
+    const shorter = prev != null && last.durationSec < S.CONFIRM_TOLERANCE * prev;
+    if (base.note === NOTES.SHORTER && !shorter) base.note = null;
+    else if (shorter && base.note == null && [KINDS.RAISE, KINDS.REPEAT, KINDS.RECOVER].includes(base.kind)) base.note = NOTES.SHORTER;
+  }
 
   let repeatSec = null;
   // Repeat is only offered next to an actual suggestion, right after a session that went well,

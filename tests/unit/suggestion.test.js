@@ -396,3 +396,20 @@ test('reported: two good sessions at the increased time → the next suggestion 
   const twice = suggest([...ss, good(0, 50, { hour: 18, targetSec: 50 }), good(0, 51, { hour: 19, targetSec: 50 })], NOW + 3600e3 * 2);
   assert.equal(twice.sec, 55);
 });
+
+test('reported: "shorter" is only said when the session ended before the suggestion that applied to it', () => {
+  const plan = [[8, 38, 38], [9, 17, 45], [10, 30, 45], [11, 45, 45], [12, 52, 55], [13, 52, 55], [14, 60, 55], [15, 60, 50]];
+  let ss = plan.map(([h, sec, targetSec]) => good(0, sec, { hour: h, targetSec }));
+  const at = (h) => new Date(new Date(NOW).setHours(h, 30, 0, 0)).getTime();
+  const before = suggest(ss, at(15)).sec;
+  ss = [...ss, good(0, before, { hour: 16, targetSec: before })]; // exactly the suggestion
+  assert.notEqual(suggest(ss, at(16)).note, NOTES.SHORTER);
+  const next = suggest(ss, at(16)).sec;
+  ss = [...ss, good(0, next, { hour: 17, targetSec: next })]; // exactly the suggestion again
+  assert.notEqual(suggest(ss, at(17)).note, NOTES.SHORTER);
+  const sug = suggest(ss, at(17)).sec;
+  ss = [...ss, good(0, 40, { hour: 18, targetSec: sug })]; // really ended early
+  const r = suggest(ss, at(18));
+  assert.equal(r.note, NOTES.SHORTER);
+  assert.equal(r.sec, sug); // and it doesn't lower the suggestion
+});
