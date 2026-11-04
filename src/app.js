@@ -451,6 +451,19 @@ $('saved-comment').addEventListener('input', () => {
   saveState(state);
 });
 
+// Special circumstance: saved at once with the session; the comment box suggests saying what happened.
+$('saved-special').addEventListener('change', () => {
+  if (!savedFor) return;
+  state = updateSession(state, savedFor, { uncertain: $('saved-special').checked });
+  saveState(state);
+  commentHint($('saved-comment'), $('saved-special').checked);
+  if ($('saved-special').checked && !$('saved-comment').value) $('saved-comment').focus();
+});
+
+function commentHint(box, special) {
+  box.placeholder = special ? t('specialPlaceholder') : t('commentPlaceholder');
+}
+
 $('saved-done').addEventListener('click', () => {
   savedFor = null;
   render();
@@ -573,8 +586,10 @@ function render() {
     $('saved-done').hidden = isBad;
     if (savedFilled !== s.id) {
       $('saved-comment').value = s.comment ?? '';
+      $('saved-special').checked = s.uncertain === true;
       savedFilled = s.id;
     }
+    commentHint($('saved-comment'), $('saved-special').checked);
   }
   if (mode === 'training') {
     $('training-label').textContent = t('trainingLabel', { dog: dogName() });
@@ -951,7 +966,7 @@ function renderEditor() {
     b.setAttribute('aria-pressed', String(b.dataset.result === editing.result));
   }
   $('edit-onset-field').hidden = editing.result !== RESULTS.BAD;
-  $('edit-uncertain-field').hidden = editing.result !== RESULTS.GOOD;
+  commentHint($('edit-comment'), $('edit-uncertain').checked);
   $('edit-delete').textContent = deleteArmed ? t('editDeleteConfirm') : t('editDelete');
   $('edit-delete').classList.toggle('armed', deleteArmed);
 }
@@ -995,14 +1010,14 @@ $('edit-form').addEventListener('submit', (e) => {
       return;
     }
     changes.anxietyOnsetSec = onset.empty ? null : onset.value;
-  } else {
-    changes.uncertain = $('edit-uncertain').checked;
   }
+  changes.uncertain = $('edit-uncertain').checked; // special circumstance, for both results
   update(updateSession(state, editing.id, changes));
   dialog.close();
 });
 
 $('edit-cancel').addEventListener('click', () => dialog.close());
+$('edit-uncertain').addEventListener('change', renderEditor);
 
 $('edit-delete').addEventListener('click', () => {
   if (!deleteArmed) {

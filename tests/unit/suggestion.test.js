@@ -413,3 +413,44 @@ test('reported: "shorter" is only said when the session ended before the suggest
   assert.equal(r.note, NOTES.SHORTER);
   assert.equal(r.sec, sug); // and it doesn't lower the suggestion
 });
+
+// ---------- v0.15: special circumstance (stored as `uncertain`) ----------
+test('special circumstance, went well but shorter (an easier variant you chose) → neutral', () => {
+  const base = [g(3, 9, 300), g(3, 10, 300), g(3, 11, 300)]; // level 5:00, suggestion 5:30
+  const before = suggest(base);
+  assert.equal(before.sec, 330);
+  const r = suggest([...base, good(2, 60, { hour: 9, uncertain: true }), good(2, 45, { hour: 10, uncertain: true })]);
+  assert.equal(r.sec, 330); // unchanged
+  assert.equal(r.note, NOTES.SPECIAL);
+});
+
+test('special circumstance, went well at the suggestion → counts like any good session', () => {
+  const base = [g(3, 9, 300), g(3, 10, 300), g(3, 11, 300)];
+  const marked = suggest([...base, good(2, 330, { hour: 9, uncertain: true }), good(2, 335, { hour: 10, uncertain: true })]);
+  const plain = suggest([...base, good(2, 330, { hour: 9 }), good(2, 335, { hour: 10 })]);
+  assert.equal(marked.sec, plain.sec);
+  assert.ok(marked.sec > 330);
+});
+
+test('reported: didn\'t go well because of a vacuum outside → one gentler session, then straight back', () => {
+  const base = [g(5, 9, 600), g(5, 10, 600), g(5, 11, 600), g(4, 9, 600)]; // level 10:00
+  const vacuum = bad(3, 56, { hour: 9, anxietyOnsetSec: 30, uncertain: true });
+  const r = suggest([...base, vacuum]);
+  assert.equal(r.kind, KINDS.EASIER);
+  assert.equal(r.sec, 480); // 80 % of 10:00 – not 0:24 (80 % of the worry time)
+  assert.equal(r.note, NOTES.SPECIAL);
+  // One good session at that time → back at 10:00.
+  const back = suggest([...base, vacuum, g(3, 10, 480, 480)]);
+  assert.equal(back.sec, 600);
+  // Without the mark it is an ordinary hard session: much lower, 3 steps back.
+  const ordinary = suggest([...base, { ...vacuum, uncertain: false }]);
+  assert.equal(ordinary.sec, 24);
+});
+
+test('many marked sessions count as ordinary sessions again (and the app says so)', () => {
+  const base = [g(6, 9, 600), g(6, 10, 600), g(6, 11, 600)];
+  const marked = [bad(5, 60, { uncertain: true }), bad(4, 60, { uncertain: true }), bad(3, 60, { uncertain: true })];
+  const r = suggest([...base, ...marked]);
+  assert.equal(r.note, NOTES.MANY_SPECIAL);
+  assert.ok(r.sec == null || r.sec < 480, `treated as ordinary hard sessions: ${r.sec}`);
+});

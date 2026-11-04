@@ -54,7 +54,7 @@ export function parseBackup(text) {
       s.anxietyOnsetSec <= s.durationSec
         ? Math.round(s.anxietyOnsetSec)
         : null,
-    uncertain: s.result === RESULTS.GOOD && s.uncertain === true,
+    uncertain: s.uncertain === true, // special circumstance (both results since v0.15)
     // Added in v0.7. Missing = no comment.
     comment: cleanComment(s.comment),
   }));
@@ -156,14 +156,14 @@ export function buildCsv(state) {
         s.result === RESULTS.GOOD ? 'Went well' : "Didn't go well",
         s.anxietyOnsetSec ?? '',
         mmss(s.anxietyOnsetSec),
-        s.uncertain ? 'No' : 'Yes',
+        s.uncertain ? 'Yes' : '',
         s.contextId, // stable id: stays the same when a place is renamed
         s.comment ?? '',
       ];
     });
   const header = [
     'Date', 'Time', 'Place', 'Actual (s)', 'Actual', 'Target (s)', 'Target', 'Result',
-    'Worried after (s)', 'Worried after', 'Counted for suggestions', 'Place ID', 'Comment',
+    'Worried after (s)', 'Worried after', 'Special circumstance', 'Place ID', 'Comment',
   ];
   return ['sep=;', ...[header, ...rows].map((r) => r.map(csvCell).join(';'))].join('\r\n') + '\r\n';
 }

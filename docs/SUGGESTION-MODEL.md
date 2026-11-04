@@ -35,6 +35,9 @@ to. v0.12 builds on a **typical level** instead:
 | Session that didn't go well | Lower: 80 % of the worry time (if entered), else 80 % of a clearly shorter time that went well, else **no automatic time** until 2 good sessions have followed. Worry within 10 s → no automatic time |
 | Good sessions after it | Back to the **typical level from before the hard session** in at most **3 steps** (each confirmed session one third of the way, never more than doubling) |
 | 7 days without sessions | Start over, no automatic time. The earlier stable level is shown as history only |
+| **Special circumstance** (user mark, e.g. a vacuum outside), went well | Counts if it reached the suggestion that applied to it; shorter → neutral |
+| **Special circumstance**, didn't go well | 80 % of the level once, back after **one** good session; the level and goal are unchanged |
+| 3 of the latest 5 sessions marked special | The marks are ignored: all count as ordinary sessions (and the app says so) |
 | Start (1–2 sessions) | A cautious anchor: what both sessions reached, or one session's *planned* time |
 
 The rules that protect against extreme values are kept: a single session never sets a level, one
@@ -126,6 +129,7 @@ From "No target", **+** opens time entry instead of guessing a time. Tapping the
 | 19 | level 11:00, worry at 4:00, then following the suggestions | 3:00 → 5:30 → 8:00 → **11:00** → 11:00 → 12:00 |
 | 20 | 3 × 10 min, then many 2 min sessions | unchanged for 7 shorter sessions; after the 8th the level follows them |
 | 21 | reported: two ~18 min sessions among many 10 s–2 min sessions, then a hard one | goal ≤ 1:30, never 15 min; back at ~1:30 after a few good sessions |
+| 23 | reported: level 10:00, didn't go well (vacuum outside, marked) | **8:00** once, then back to 10:00 (unmarked: 0:24 and 3 steps back) |
 | 22 | reported: two good sessions at the suggested 0:45 | **0:50** (before: 0:45 again, although the text said "small increase") |
 
 ## What the app cannot know

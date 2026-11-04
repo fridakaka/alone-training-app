@@ -53,6 +53,14 @@ export const SUGGESTION_SETTINGS = Object.freeze({
 
   // "Repeat" button: never offered for a time much longer than the suggestion
   REPEAT_MAX_RATIO: 1.5,
+
+  // SPECIAL CIRCUMSTANCE (marked by the user, e.g. a vacuum cleaner outside):
+  // - went well and reached the suggestion → counts as usual; went well but shorter → neutral
+  // - didn't go well → one gentler session (80 % of the level), then straight back after 1 good one
+  SPECIAL_HARD_RATIO: 0.8,
+  // ...but when this many of the latest sessions are marked, they count as ordinary sessions.
+  SPECIAL_MANY: 3,
+  SPECIAL_WINDOW: 5,
 });
 
 export const KINDS = Object.freeze({
@@ -80,6 +88,8 @@ export const NOTES = Object.freeze({
   ONCE: 'once', // the level went well once – once more before it goes up
   BACK: 'back', // just back at the level from before the hard session
   FOLLOW: 'follow', // several good sessions in a row were shorter: the suggestion followed them
+  SPECIAL: 'special', // the latest session had a special circumstance
+  MANY_SPECIAL: 'many-special', // many recent sessions are marked special: they count as usual
 });
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -101,18 +111,27 @@ export function suggestTarget(sessions, { now = Date.now(), settings = SUGGESTIO
   const S = settings;
   const logged = sessions.filter(isValid).filter((s) => s.startedAt <= now).sort((a, b) => a.startedAt - b.startedAt);
   const since = now - S.WINDOW_DAYS * DAY_MS;
-  const relevant = logged.filter(isRelevant);
+  // Special circumstances: ignored as such when many of the latest sessions are marked.
+  const manySpecial = logged.slice(-S.SPECIAL_WINDOW).filter(isSpecial).length >= S.SPECIAL_MANY;
+  const { relevant, specials, excluded } = withSpecials(logged, S, manySpecial);
   const earlierLevel = stableLevelBefore(relevant, since, S);
-  const base = decide(logged, relevant, since, S);
+  const base = decide(logged, relevant, since, S, specials);
   // "Shorter" is only said when the latest session really ended before the suggestion that
   // applied to IT – i.e. the suggestion computed from the sessions before it.
   const last = relevant[relevant.length - 1];
-  if (last && last.result === 'good') {
+  const latest = logged[logged.length - 1];
+  if (last && last === latest && last.result === 'good') {
     const prevRelevant = relevant.slice(0, -1);
-    const prev = decide(logged.filter((x) => x !== last), prevRelevant, since, S).sec;
+    const prev = decide(logged.filter((x) => x !== last), prevRelevant, since, S, specials).sec;
     const shorter = prev != null && last.durationSec < S.CONFIRM_TOLERANCE * prev;
     if (base.note === NOTES.SHORTER && !shorter) base.note = null;
     else if (shorter && base.note == null && [KINDS.RAISE, KINDS.REPEAT, KINDS.RECOVER].includes(base.kind)) base.note = NOTES.SHORTER;
+  }
+
+  // Say so when the latest session had a special circumstance.
+  if (latest && isSpecial(latest) && ![KINDS.NONE, KINDS.BREAK, KINDS.TOO_LITTLE].includes(base.kind)) {
+    if (manySpecial) base.note = NOTES.MANY_SPECIAL;
+    else if (excluded.has(latest) || specials.has(latest)) base.note = NOTES.SPECIAL;
   }
 
   let repeatSec = null;
@@ -129,7 +148,38 @@ export function suggestTarget(sessions, { now = Date.now(), settings = SUGGESTIO
   };
 }
 
-function decide(logged, relevant, since, S) {
+// A session the user marked "special circumstance" (stored as `uncertain`, the name of the
+// earlier "don't count as progress" mark, so older data and backups keep working).
+export function isSpecial(s) {
+  return s?.uncertain === true;
+}
+
+// Which sessions count. A special good session counts only when it reached the suggestion that
+// applied to it (it is then as good as any other); a shorter one is left out (neutral). A special
+// hard session counts, but gently (see afterHardSession). With many marked sessions: all as usual.
+function withSpecials(logged, S, manySpecial) {
+  const relevant = [];
+  const specials = new Set();
+  const excluded = new Set();
+  for (const s of logged) {
+    if (!isSpecial(s) || manySpecial) {
+      relevant.push(s);
+      continue;
+    }
+    if (s.result !== 'good') {
+      relevant.push(s);
+      specials.add(s);
+      continue;
+    }
+    const since = s.startedAt - S.WINDOW_DAYS * DAY_MS;
+    const sec = relevant.length ? decide(relevant, relevant, since, S, specials).sec : null;
+    if (sec != null && s.durationSec >= S.CONFIRM_TOLERANCE * sec) relevant.push(s);
+    else excluded.add(s);
+  }
+  return { relevant, specials, excluded };
+}
+
+function decide(logged, relevant, since, S, specials = new Set()) {
   if (!logged.length) return { kind: KINDS.NONE };
   const last = relevant[relevant.length - 1];
   if (!last || last.startedAt < since) {
@@ -149,7 +199,9 @@ function decide(logged, relevant, since, S) {
   let note = null;
   let lvl = level;
   if (hardIdx >= 0) {
-    const limited = afterHardSession(streak, hardIdx, S);
+    const limited = specials.has(streak[hardIdx])
+      ? afterSpecialHardSession(streak, hardIdx, S)
+      : afterHardSession(streak, hardIdx, S);
     if (limited?.back) {
       // Just back at the level from before the hard session.
       lvl = Math.max(level ?? 0, limited.goal);
@@ -242,6 +294,19 @@ function afterHardSession(streak, hardIdx, S) {
   return { kind: KINDS.RECOVER, sec, level: sec, step, backTo: goal, hard: HARD.RECENT, note: neutral ? NOTES.SHORTER : null };
 }
 
+// A hard session with a special circumstance: one gentler session (80 % of the level), then
+// back after one good session at that time. The level itself and the goal stay as they were.
+function afterSpecialHardSession(streak, hardIdx, S) {
+  const before = streak.slice(0, hardIdx).filter((s) => s.result === 'good');
+  const goal = typicalLevel(before, S) ?? anchor(before, S);
+  if (goal == null) return afterHardSession(streak, hardIdx, S); // nothing to protect yet
+  const start = Math.max(1, floorNatural(goal * S.SPECIAL_HARD_RATIO));
+  const after = streak.slice(hardIdx + 1);
+  const back = after.findIndex((s) => s.durationSec >= S.CONFIRM_TOLERANCE * start);
+  if (back < 0) return { kind: KINDS.EASIER, sec: start, level: start, backTo: goal, note: NOTES.SPECIAL };
+  return back === after.length - 1 ? { back: true, goal } : null;
+}
+
 // Relevant sessions since the latest break (a gap of WINDOW_DAYS without sessions).
 function currentStreak(relevant, S) {
   let start = 0;
@@ -261,12 +326,6 @@ function findLastIndex(arr, fn) {
 function isValid(s) {
   return s && Number.isFinite(s.startedAt) && Number.isFinite(s.durationSec) && s.durationSec >= 0 &&
     (s.result === 'good' || s.result === 'bad');
-}
-
-// Relevant = usable as an observation. "Didn't go well" always, however short.
-// "Went well" always – also 1–2 s – unless the user marked it "don't count".
-export function isRelevant(s) {
-  return s.result !== 'good' || !s.uncertain;
 }
 
 export function dayKey(ms) {

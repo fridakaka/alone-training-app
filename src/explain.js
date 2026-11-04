@@ -16,6 +16,13 @@ import { formatTarget } from './progression.js';
 export function explanationKey(suggestion) {
   const { kind, sec, hard, fromOnset, note, step, backTo } = suggestion;
   const recent = hard === HARD.RECENT;
+  // Special circumstance (marked by the user).
+  if (note === NOTES.MANY_SPECIAL) return { key: 'explainManySpecial' };
+  if (note === NOTES.SPECIAL) {
+    return kind === KINDS.EASIER && backTo != null
+      ? { key: 'explainSpecialHard', params: { time: formatTarget(backTo) } }
+      : { key: 'explainSpecialGood' };
+  }
   // A good session that ended before the suggestion never lowers it – say so.
   if (note === NOTES.SHORTER && [KINDS.RAISE, KINDS.REPEAT, KINDS.RECOVER].includes(kind)) return { key: 'explainShorter' };
   switch (kind) {

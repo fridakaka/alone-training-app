@@ -226,12 +226,12 @@ test('editing keeps worry time consistent with duration and result', () => {
   assert.equal(updateSession(s, id, { result: 'good' }).sessions[1].anxietyOnsetSec, null);
 });
 
-test('"don\'t count" flag only applies to sessions that went well', () => {
+test('"special circumstance" can be marked on sessions that went well and on those that didn\'t', () => {
   const s = twoSessions();
   const e = updateSession(s, s.sessions[0].id, { uncertain: true });
   assert.equal(e.sessions[0].uncertain, true);
   assert.equal(updateSession(e, s.sessions[0].id, { uncertain: false }).sessions[0].uncertain, false);
-  assert.notEqual(updateSession(s, s.sessions[1].id, { uncertain: true }).sessions[1].uncertain, true);
+  assert.equal(updateSession(s, s.sessions[1].id, { uncertain: true }).sessions[1].uncertain, true); // didn't go well
 });
 
 test('reaching the target never sets the result by itself', () => {

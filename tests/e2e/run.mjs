@@ -399,7 +399,7 @@ try {
     assert.ok(await page.isVisible('#edit-uncertain-field'));
     await page.tap('#edit-dialog [data-result="bad"]');
     assert.ok(await page.isVisible('#edit-onset-field'));
-    assert.ok(await page.isHidden('#edit-uncertain-field'));
+    assert.ok(await page.isVisible('#edit-uncertain-field')); // special circumstance: for both results
     await page.fill('#edit-onset-sec', '40');
     await page.tap('#edit-save');
     assert.match(await text('#edit-error'), /can't start after the session ended/);
@@ -413,12 +413,12 @@ try {
     assert.equal(await text('#target-value'), '0:16');
   });
 
-  await step('mark a good session "don\'t count as progress"', async () => {
+  await step('mark a good session as a special circumstance', async () => {
     await open(page, 'history');
     await page.locator('#history .row').nth(1).tap();
     await page.check('#edit-uncertain');
     await page.tap('#edit-save');
-    assert.match(await text('#history li:nth-child(2) .tag'), /Went well · not counted/);
+    assert.match(await text('#history li:nth-child(2) .tag'), /Went well · special circumstance/);
   });
 
   await step('cancel leaves a session unchanged', async () => {
@@ -496,8 +496,8 @@ try {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.tap('#csv-btn')]);
     const csv = await readFile(await dl.path(), 'utf8');
     const lines = csv.trim().split('\r\n');
-    assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions;Place ID;Comment');
-    assert.match(csv, /;Didn't go well;20;0:20;Yes/);
+    assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Place ID;Comment');
+    assert.match(csv, /;Didn't go well;20;0:20;;(car|outside-shop)/);
     const total = await page.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length);
     assert.equal(lines.length - 2, total);
     await page.locator('#data-section').screenshot({ path: OUT + '11-data.png' });
@@ -873,9 +873,9 @@ try {
     await open(p, 'data');
     const [csvDl] = await Promise.all([p.waitForEvent('download'), p.tap('#csv-btn')]);
     const csv = await readFile(await csvDl.path(), 'utf8');
-    assert.match(csv, /;Bilburen;300;5:00;;;Went well;;;Yes;car;\r\n/);
+    assert.match(csv, /;Bilburen;300;5:00;;;Went well;;;;car;\r\n/);
     assert.match(csv, /;Hela lägenheten;60;1:00;/);
-    assert.match(csv, /;Utanför affären;40;0:40;;;Didn't go well;;;Yes;outside-shop/);
+    assert.match(csv, /;Utanför affären;40;0:40;;;Didn't go well;;;;outside-shop/);
 
     // New backup with own names.
     await open(p, 'data');
@@ -1872,6 +1872,57 @@ try {
     await p.tap('#welcome-start');
     assert.equal(await t('h1'), 'Sigge · Hemma');
     assert.equal(await p.locator('#history li').count(), 0);
+    await c.close();
+  });
+
+  await step('special circumstance (e.g. a vacuum outside): marked after rating, suggestion only gently affected', async () => {
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-11-04T09:00:00') });
+    await p.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      const day = (d, h) => new Date(2026, 10, 4 - d, h).getTime();
+      const sessions = [[2, 9], [2, 10], [1, 9], [1, 10]].map(([d, h], i) => ({
+        id: 'v' + i, dogId: 'charlie', contextId: 'car', startedAt: day(d, h), endedAt: day(d, h) + 600_000, durationSec: 600, targetSec: 600, result: 'good',
+      }));
+      localStorage.setItem('alone-training:v2', JSON.stringify({ schemaVersion: 2, lang: 'sv', onboarded: true, dogs: [{ id: 'charlie', name: 'Charlie' }],
+        contexts: [{ id: 'home', name: 'Hemma' }, { id: 'car', name: 'Övning sovrummet' }, { id: 'outside-shop', name: 'Testfest' }],
+        selectedContextId: 'car', active: null, pending: null, sessions }));
+    });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    assert.equal(await t('#target-value'), '11:00');
+    // Didn't go well after 56 s – the robot vacuum outside.
+    await p.tap('#start-btn');
+    await p.clock.runFor(56_000);
+    await p.tap('#end-btn');
+    await p.tap('#bad-btn');
+    assert.ok(await p.isVisible('#saved-special'));
+    assert.equal(await p.getAttribute('#saved-comment', 'placeholder'), 'T.ex. ”Han lade sig efter en stund”');
+    await p.check('#saved-special');
+    // The comment box suggests saying what happened.
+    assert.equal(await p.getAttribute('#saved-comment', 'placeholder'), 'Vad hände? T.ex. ”Robotdammsugaren körde utanför dörren”');
+    await p.fill('#saved-comment', 'Robotdammsugaren körde utanför');
+    await p.screenshot({ path: OUT + '35-special-sv.png' });
+    await p.tap('#onset-unknown');
+    const last = await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.at(-1));
+    assert.equal(last.result, 'bad');
+    assert.equal(last.uncertain, true);
+    assert.equal(last.comment, 'Robotdammsugaren körde utanför');
+    // A slightly shorter time once (80 % of 10:00), then back – not a big drop.
+    assert.equal(await t('#target-value'), '8:00');
+    assert.equal(await t('#target-basis'), 'Ett pass med särskild omständighet – lite kortare tid en gång, sedan tillbaka till 10:00.');
+    await open(p, 'history');
+    assert.match(await t('#history li:first-child .tag'), /Gick inte bra · särskild omständighet/);
+    // It can be changed afterwards in the edit sheet (also for "didn't go well").
+    await p.locator('#history .row').first().tap();
+    assert.ok(await p.isChecked('#edit-uncertain'));
+    await p.uncheck('#edit-uncertain');
+    await p.tap('#edit-save');
+    await home(p);
+    assert.notEqual(await t('#target-value'), '8:00'); // an ordinary hard session now
     await c.close();
   });
 

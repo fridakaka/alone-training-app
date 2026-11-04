@@ -661,3 +661,8 @@ h1, .card h2 { overflow-wrap: anywhere; }
 #progress .detail-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
 #progress .detail-row .detail { margin: 0; }
 #chart-edit { min-height: 32px; padding: 0 12px; font-size: 13px; }
+
+/* ---------- v0.15: special circumstance ---------- */
+.chart .bar.special .mark { opacity: 0.45; }
+.special-field { margin-top: 2px; }
+.special-field .muted { font-size: 13px; }

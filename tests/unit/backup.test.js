@@ -82,14 +82,14 @@ test('Excel export has one row per session, oldest first, semicolon separated', 
   const state = { ...createInitialState(), sessions: [sess('s2', { contextId: 'outside-shop', targetSec: 120, result: 'bad' }), sess('s1')] };
   const lines = buildCsv(state).trim().split('\r\n');
   assert.equal(lines[0], 'sep=;');
-  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Counted for suggestions;Place ID;Comment');
+  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Place ID;Comment');
   assert.equal(lines.length, 4);
-  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well;;;Yes;home;$/);
-  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;Yes;outside-shop;$/);
+  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well;;;;home;$/);
+  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;;outside-shop;$/);
   const withNew = { ...state, sessions: [sess('s3', { result: 'bad', anxietyOnsetSec: 45 }), sess('s4', { uncertain: true })] };
   const [, , a, b] = buildCsv(withNew).trim().split('\r\n');
-  assert.match(a, /;Didn't go well;45;0:45;Yes;home;$/);
-  assert.match(b, /;Went well;;;No;home;$/);
+  assert.match(a, /;Didn't go well;45;0:45;;home;$/);
+  assert.match(b, /;Went well;;;Yes;home;$/);
 });
 
 test('backup file name contains the date', () => {

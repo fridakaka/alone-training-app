@@ -174,7 +174,8 @@ export function discardPending(state) {
 // Optional session fields (older sessions simply don't have them):
 // - anxietyOnsetSec: roughly when the dog started to get worried, in seconds from the start.
 //   Only for "didn't go well". Missing/null = unknown (never treated as 0).
-// - uncertain: true = "don't count as progress" (unsure or logged wrong). Only for "went well".
+// - uncertain: true = "special circumstance" (e.g. a vacuum outside). For both results; the
+//   name is kept from the earlier "don't count as progress" mark so old data still works.
 
 // Edit a saved session. Only these fields can change; invalid values are ignored.
 export function updateSession(state, id, changes) {
@@ -203,7 +204,6 @@ export function updateSession(state, id, changes) {
       if (next.result === RESULTS.GOOD) {
         if (next.anxietyOnsetSec != null) next.anxietyOnsetSec = null;
       } else {
-        if (next.uncertain) next.uncertain = false;
         if (next.anxietyOnsetSec != null && !isValidOnset(next.anxietyOnsetSec, next.durationSec)) {
           next.anxietyOnsetSec = null;
         }

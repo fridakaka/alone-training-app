@@ -17,6 +17,7 @@ export const CLIP_RATIO = 3;
 // "Didn't go well · worried at 0:30", "Went well · not counted". Used by graph and history.
 export function resultText(s) {
   if (s.result === RESULTS.GOOD) return s.uncertain ? t('resultNotCounted') : t('good');
+  if (s.uncertain) return t('resultBadSpecial');
   return Number.isFinite(s.anxietyOnsetSec)
     ? t('resultWorriedAt', { time: formatTarget(s.anxietyOnsetSec) })
     : t('bad');
@@ -114,7 +115,7 @@ export function renderChart(allSessions) {
       <text class="clip-label" x="${cx}" y="${PAD.top - 6}" text-anchor="middle">↑${compactDuration(s.durationSec)}</text>`
         : '';
       return `
-    <g class="bar ${s.result}${clipped ? ' clipped' : ''}" data-id="${s.id}" tabindex="0" role="img" aria-label="${label}">
+    <g class="bar ${s.result}${clipped ? ' clipped' : ''}${s.uncertain ? ' special' : ''}" data-id="${s.id}" tabindex="0" role="img" aria-label="${label}">
       <rect class="hit" x="${PAD.left + i * slot}" y="${PAD.top - 18}" width="${slot}" height="${plotH + 18}"/>
       <path class="mark" d="${roundedTopBar(x, baseline, barW, h, r)}"/>
       ${targetTick}
@@ -172,7 +173,7 @@ export function dailySummary(sessions) {
     const day = days.get(key) ?? { at: new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime(), good: null, bad: null };
     if (s.result === RESULTS.GOOD && !s.uncertain) {
       if (!day.good || s.durationSec > day.good.durationSec) day.good = s;
-    } else if (s.result === RESULTS.BAD) {
+    } else if (s.result === RESULTS.BAD && !s.uncertain) {
       if (!day.bad || s.durationSec < day.bad.durationSec) day.bad = s;
     }
     days.set(key, day);
