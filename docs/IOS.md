@@ -12,6 +12,7 @@ Webbappen (PWA:n) på GitHub Pages fungerar som förut, parallellt.
 | Appen | Samma HTML/CSS/JS som PWA:n, packad **i** appen med Capacitor. Laddas aldrig från nätet → fungerar offline. | `www/` (byggs), `ios/App` |
 | Lagring | Allt sparas i iOS egen lagring (UserDefaults, via `@capacitor/preferences`) och speglas till sidans lagring. | `src/boot.js`, `src/native.js` |
 | Live Activity | Riktig ActivityKit-kod i Swift. Låsskärm + Dynamic Island. Timern ritas av iOS från passets starttid, så den räknar rätt även med låst skärm eller stängd app. Målet visas bara som text – inget avslutar passet automatiskt. | `native/ios/App/LiveActivityPlugin.swift`, `native/ios/AloneTimeWidget/` |
+| Vibration vid nått mål | Appen öppen: en kort haptisk knack (`@capacitor/haptics`). Låst telefon/annan app: en lokal notis som schemaläggs när passet startar (`@capacitor/local-notifications`, frågar om lov första gången). Notisen tas bort vid *Avsluta*/*Släng* och avslutar aldrig passet. | `src/reminder.js`, `src/native.js` |
 | Säkerhetskopior | Spara via delningsbladet (→ "Spara i Filer"). Import från Filer, alltid med en genomgång innan något ändras. | `src/app.js` |
 
 PWA:ns data följer **inte** automatiskt med till iPhone-appen (de är två skilda appar för iOS).
@@ -99,9 +100,10 @@ inget raderas och dina inställningar ändras bara om du själv bockar i rutan f
 3. På iPhone 14 Pro och nyare: gå till hemskärmen – timern syns i Dynamic Island. Håll fingret på den för den större vyn.
 4. Vänta några minuter med låst skärm, lås upp och öppna appen: timern i appen och på låsskärmen ska visa samma tid.
 5. Tryck **Avsluta träning** → Live Activity försvinner. Samma sak om du sedan väljer **Släng det här passet**.
-6. Passera målet: inget händer automatiskt, timern fortsätter tills du avslutar.
+6. Passera målet: inget avslutas, timern fortsätter tills du avslutar.
+7. **Vibration:** första passet med mål frågar iPhonen om Alone Time får skicka notiser – välj **Tillåt**. Med appen öppen: en kort knack när målet nås. Med låst telefon: telefonen vibrerar (och låter, om ljudet är på) och visar *Målet … är nått*. Avsluta ett pass före målet → ingen notis kommer.
 
-Syns ingen Live Activity: **Inställningar → Alone Time → Live-aktiviteter** ska vara på.
+Syns ingen Live Activity: **Inställningar → Alone Time → Live-aktiviteter** ska vara på. Ingen vibration med låst telefon: **Inställningar → Alone Time → Notiser** ska vara på.
 
 ## Uppdatera appen senare
 ```

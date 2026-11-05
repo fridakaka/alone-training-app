@@ -70,3 +70,38 @@ export async function shareFileNative(fileName, text) {
     throw err;
   }
 }
+
+// ---------- "target reached": vibration ----------
+
+/** A short tap. iOS app: Haptics. Browser: navigator.vibrate (Android; iPhone Safari has none). */
+export function buzz() {
+  if (isNativeApp()) {
+    plugin('Haptics')?.notification({ type: 'SUCCESS' }).catch(() => {});
+    return;
+  }
+  try {
+    globalThis.navigator?.vibrate?.([120, 80, 120]);
+  } catch {}
+}
+
+/** iOS app: a local notification at the target time (asks for permission the first time). */
+export async function scheduleReminder(id, { at, title, body }) {
+  if (!isNativeApp()) return false;
+  try {
+    const ln = plugin('LocalNotifications');
+    await ln.cancel({ notifications: [{ id }] }).catch(() => {});
+    await ln.schedule({
+      notifications: [{ id, title, body, schedule: { at: new Date(at) }, sound: 'default', foreground: false }],
+    });
+    return true;
+  } catch {
+    return false; // e.g. notifications not allowed: the tap in the open app still works
+  }
+}
+
+export async function cancelReminder(id) {
+  if (!isNativeApp()) return;
+  try {
+    await plugin('LocalNotifications').cancel({ notifications: [{ id }] });
+  } catch {}
+}

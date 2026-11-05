@@ -40,8 +40,9 @@ import {
   t, tHtml, setLang, getLang, locale, formatDuration, listNames, escapeHtml, guessLang,
   LANGS, LANG_NAMES, DEFAULT_PLACE_NAMES, defaultNameOffer,
 } from './i18n.js';
-import { isNativeApp, startLiveActivity, endLiveActivity, shareFileNative } from './native.js';
+import { isNativeApp, startLiveActivity, endLiveActivity, shareFileNative, buzz, scheduleReminder, cancelReminder } from './native.js';
 import { liveActivityPayload, liveActivityStep } from './liveActivity.js';
+import { reminderPlan, reminderStep, shouldBuzz, REMINDER_ID } from './reminder.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -311,6 +312,23 @@ function syncLiveActivity() {
   } else if (step.action === 'end') {
     liveSent = null;
     endLiveActivity();
+  }
+  syncReminder();
+}
+
+// ---------- "target reached": vibration (see reminder.js) ----------
+
+let reminderSent = 'unknown';
+let buzzedKey = null;
+
+function syncReminder() {
+  const step = reminderStep(reminderSent, reminderPlan(state, Date.now()));
+  if (step.action === 'schedule') {
+    reminderSent = step.plan.key;
+    scheduleReminder(REMINDER_ID, step.plan);
+  } else if (step.action === 'cancel') {
+    reminderSent = null;
+    cancelReminder(REMINDER_ID);
   }
 }
 
@@ -789,6 +807,10 @@ function renderTimer() {
     const reached = elapsed >= target;
     line.textContent = t(reached ? 'trainingReached' : 'trainingTarget', { time: formatTarget(target) });
     line.classList.toggle('reached', reached);
+    if (!document.hidden && shouldBuzz(state.active, elapsed, buzzedKey)) {
+      buzzedKey = `${state.active.startedAt}:${target}`;
+      buzz();
+    }
   }
 }
 

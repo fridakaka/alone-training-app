@@ -82,6 +82,8 @@ const en = {
   trainingLabel: '{dog} has been alone for',
   trainingTarget: 'Target {time}',
   trainingReached: 'Target {time} reached',
+  reminderTitle: 'Target {time} reached',
+  reminderBody: '{dog} is still alone – the session runs until you end it.',
   end: 'End training',
 
   // Result
@@ -376,6 +378,8 @@ const sv = {
   trainingLabel: '{dog} har varit ensam i',
   trainingTarget: 'Mål {time}',
   trainingReached: 'Målet {time} är nått',
+  reminderTitle: 'Målet {time} är nått',
+  reminderBody: '{dog} är fortfarande ensam – passet pågår tills du avslutar det.',
   end: 'Avsluta träning',
 
   resultFinished: 'Passet är avslutat',

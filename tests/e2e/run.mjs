@@ -1287,6 +1287,11 @@ try {
           writeFile: async ({ path, data }) => (log(['writeFile', path, data.length]), { uri: `file:///cache/${path}` }),
         },
         Share: { share: async (o) => log(['share', o.url]) },
+        Haptics: { notification: async (o) => log(['haptic', o.type]) },
+        LocalNotifications: {
+          schedule: async ({ notifications: [n] }) => (log(['notify', n.id, new Date(n.schedule.at).getTime(), n.title, n.body, n.foreground]), {}),
+          cancel: async ({ notifications: [n] }) => log(['cancel', n.id]),
+        },
       },
     };
   };
@@ -1298,9 +1303,11 @@ try {
     await p.addInitScript(nativeMock);
     await p.clock.install({ time: new Date('2026-10-06T09:00:00') });
     const calls = () => p.evaluate(() => JSON.parse(sessionStorage.getItem('__calls') || '[]'));
-    const last = async () => (await calls()).at(-1);
+    // The last Live Activity / file call (the vibration calls are checked separately).
+    const last = async () => (await calls()).filter((x) => !['notify', 'cancel', 'haptic'].includes(x[0])).at(-1);
     const t = (sel) => p.textContent(sel).then((x) => x.trim());
     await gotoApp(p, { lang: 'sv', dog: 'Majken' });
+    assert.deepEqual((await calls()).filter((x) => x[0] === 'cancel'), [['cancel', 4201]]); // no stale notification left
     assert.deepEqual(await last(), ['end']); // app opened without a session: no stale activity left
 
     // Start with a target.
@@ -1314,10 +1321,20 @@ try {
     assert.equal(payload.placeName, 'Hemma');
     assert.equal(payload.targetLabel, 'Mål 0:30');
     // The lock-screen timer counts from exactly the session's saved start time.
-    assert.equal(payload.startedAt, await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).active.startedAt));
+    const startedAt = await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).active.startedAt);
+    assert.equal(payload.startedAt, startedAt);
+    // Vibration when the target is reached: a notification for a locked phone (hidden while the
+    // app is open) …
+    const notifies = (await calls()).filter((x) => x[0] === 'notify');
+    assert.deepEqual(notifies, [['notify', 4201, startedAt + 30_000, 'Målet 0:30 är nått', 'Majken är fortfarande ensam – passet pågår tills du avslutar det.', false]]);
+    const haptics = async () => (await calls()).filter((x) => x[0] === 'haptic');
+    await p.clock.runFor(29_000);
+    assert.deepEqual(await haptics(), []);
 
-    // Past the target: nothing ends by itself.
-    await p.clock.runFor(45_000);
+    // Past the target: one short tap in the open app; nothing ends by itself.
+    await p.clock.runFor(16_000);
+    assert.deepEqual(await haptics(), [['haptic', 'SUCCESS']]);
+    assert.equal((await calls()).filter((x) => x[0] === 'notify').length, 1); // scheduled once
     assert.equal((await last())[0], 'start');
     assert.ok(await p.isVisible('#end-btn'));
 
@@ -1325,6 +1342,7 @@ try {
     await p.reload();
     await p.clock.runFor(1_000);
     assert.match(await t('#timer'), /^00:4\d$/);
+    assert.deepEqual(await haptics(), [['haptic', 'SUCCESS']]); // reopened after the target: no late tap
     const [k2, p2] = await last();
     assert.equal(k2, 'start');
     assert.equal(p2.sessionId, payload.sessionId);
@@ -1341,6 +1359,19 @@ try {
     assert.deepEqual(await last(), ['end']);
     await p.tap('#discard-btn');
     assert.deepEqual(await last(), ['end']);
+
+    // Ended BEFORE the target: the notification is cancelled, and no tap comes later.
+    await p.tap('#target-up');
+    await p.fill('#target-sec', '30');
+    await p.tap('#target-set');
+    await p.tap('#start-btn');
+    assert.equal((await calls()).at(-1)[0], 'notify');
+    await p.clock.runFor(5_000);
+    await p.tap('#end-btn');
+    assert.deepEqual((await calls()).at(-1), ['cancel', 4201]); // the notification won't come
+    await p.tap('#discard-btn');
+    await p.clock.runFor(40_000);
+    assert.equal((await haptics()).length, 1);
 
     // Save backup in the app: written to a file and shared (→ Save to Files).
     await open(p, 'data');
