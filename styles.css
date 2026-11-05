@@ -666,3 +666,14 @@ h1, .card h2 { overflow-wrap: anywhere; }
 .chart .bar.special .mark { opacity: 0.45; }
 .special-field { margin-top: 2px; }
 .special-field .muted { font-size: 13px; }
+
+/* ---------- v0.15: "Why …?" ---------- */
+.why-link { display: block; margin: 2px auto 0; padding: 4px 8px; font-size: 14px; }
+.why { display: grid; gap: 10px; }
+.why h2 { font-size: 20px; }
+.why h3 { margin: 4px 0 0; font-size: 15px; }
+.why p { margin: 0; }
+.why-suggestion { font-size: 18px; font-weight: 600; }
+.why-sessions, .why-rules { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; color: var(--ink-2); }
+.why .hint { margin: 0; }
+.target-basis:empty { display: none; }

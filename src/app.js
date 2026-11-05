@@ -31,8 +31,8 @@ import {
 import { loadState, saveState } from './store.js';
 import { renderChart, renderOverview, hasClippedBars, resultText, MAX_BARS } from './chart.js';
 import { stepUp, stepDown, formatTarget, MIN_TARGET_SEC } from './progression.js';
-import { suggestTarget } from './suggestion.js';
-import { explanationKey, longestGoodSession } from './explain.js';
+import { suggestTarget, KINDS } from './suggestion.js';
+import { explanationKey, longestGoodSession, shownUnderTime } from './explain.js';
 import {
   buildBackup, parseBackup, mergeSessions, buildCsv, backupFileName, importSummary,
 } from './backup.js';
@@ -735,12 +735,15 @@ function renderReady() {
   $('target-down').disabled = value == null || value <= MIN_TARGET_SEC;
   $('target-edit').hidden = !targetEditorOpen;
 
-  // When the user has set their own target, the line says what the APP suggests and why.
-  const reason = explanation(suggestion);
+  // A short line only when something particular happened; the "Why …?" sheet has the facts.
+  // When the user has set their own target, the line says what the APP suggests.
+  const reason = shownUnderTime(suggestion) ? explanation(suggestion) : '';
   $('target-basis').textContent = own
-    ? `${suggested == null ? t('appSuggestionNone') : t('appSuggestion', { time: formatTarget(suggested) })} ${reason}`
+    ? `${suggested == null ? t('appSuggestionNone') : t('appSuggestion', { time: formatTarget(suggested) })} ${reason}`.trim()
     : reason;
   $('target-basis').dataset.kind = suggestion.kind;
+  $('why-btn').hidden = suggestion.kind === KINDS.NONE;
+  $('why-btn').textContent = suggested == null ? t('whyLinkNone') : t('whyLink', { time: formatTarget(suggested) });
 
   // History, kept short and quiet below today's target. Neither number is a target, and
   // neither is used to compute one.
@@ -812,6 +815,37 @@ function renderProgress() {
   // Only for someone who hasn't logged any session yet: easy to find, never in the way later.
   $('prep-link').hidden = state.sessions.some((s) => s.dogId === dogId());
 }
+
+// ---------- "Why …?": the facts behind today's suggestion ----------
+
+const whyDialog = $('why-dialog');
+
+$('why-btn').addEventListener('click', () => {
+  const { suggestion, suggested } = currentTarget();
+  $('why-suggestion').textContent = suggested == null ? t('whyNoTarget') : t('whySuggestion', { time: formatTarget(suggested) });
+  $('why-reason').textContent = explanation(suggestion);
+  const latest = sessionsFor(state, current()).slice(-5).reverse();
+  $('why-sessions').replaceChildren(
+    ...latest.map((s) => {
+      const when = new Date(s.startedAt).toLocaleString(locale(), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const target = s.targetSec ? ` (${t('whyTarget', { time: formatTarget(s.targetSec) })})` : '';
+      return Object.assign(document.createElement('li'), { textContent: `${when} · ${formatDuration(s.durationSec)}${target} · ${resultText(s)}` });
+    }),
+  );
+  $('why-typical').textContent = suggestion.typical != null
+    ? t('whyTypical', { time: formatTarget(suggestion.typical) })
+    : t('whyTypicalNone');
+  whyDialog.showModal();
+});
+$('why-close').addEventListener('click', () => whyDialog.close());
+whyDialog.addEventListener('click', (e) => {
+  if (e.target === whyDialog) whyDialog.close();
+});
+$('why-help').addEventListener('click', () => {
+  whyDialog.close();
+  go('help');
+  $('help-calc').open = true;
+});
 
 // ---------- the whole course (overview sheet) ----------
 

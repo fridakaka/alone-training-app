@@ -64,6 +64,14 @@ async function open(p, view) {
 }
 const home = (p) => open(p, 'home');
 
+// Ordinary suggestions have no line under the time: the reason is in the "Why …?" sheet.
+async function whyReason(p) {
+  await p.tap('#why-btn');
+  const reason = (await p.textContent('#why-reason')).trim();
+  await p.tap('#why-close');
+  return reason;
+}
+
 // Choose a backup file: the app shows a review first; nothing changes until "Import".
 // Returns { summary, settings, status } (status after confirming / cancelling / an error).
 async function importFile(p, file, { useSettings = false, cancel = false, input = '#restore-input' } = {}) {
@@ -315,7 +323,8 @@ try {
   await step('two good Car sessions (same day too) → the time both support, then a small increase', async () => {
     assert.equal(await text('#target-label'), 'Suggestion today');
     assert.equal(await text('#target-value'), '5:30'); // 5:00 + 10 % – not the longer 6 min 10 s
-    assert.equal(await text('#target-basis'), 'This time has gone well twice — small increase.');
+    assert.equal(await text('#target-basis'), '');
+    assert.equal(await whyReason(page), 'This time has gone well twice — small increase.');
     await page.screenshot({ path: OUT + '6-car-suggestion.png', fullPage: true });
   });
 
@@ -379,7 +388,8 @@ try {
     await session(30, 'good');
     assert.equal(await text('#target-label'), 'Suggestion today');
     assert.equal(await text('#target-value'), '0:35');
-    assert.equal(await text('#target-basis'), 'This time has gone well twice — small increase.');
+    assert.equal(await text('#target-basis'), '');
+    assert.equal(await whyReason(page), 'This time has gone well twice — small increase.');
     await page.screenshot({ path: OUT + '8-raise.png', fullPage: true });
   });
 
@@ -668,7 +678,7 @@ try {
     await p.tap('#saved-done');
     assert.match(await t('#history li:first-child .dur'), /^2 s$/);
     assert.equal(await t('#history li:first-child .planned'), 'target 0:02');
-    assert.equal(await t('#target-basis'), 'Limited basis — repeat 0:02.');
+    assert.equal(await whyReason(p), 'Limited basis — repeat 0:02.');
     await c.close();
   });
 
@@ -710,7 +720,7 @@ try {
     await p.tap('#good-btn');
     await p.tap('#saved-done');
     assert.equal(await t('#target-value'), '0:10');
-    assert.equal(await t('#target-basis'), 'Limited basis — repeat 0:10.');
+    assert.equal(await whyReason(p), 'Limited basis — repeat 0:10.');
     assert.ok(await p.isVisible('#earlier-level'));
     assert.equal(await p.locator('#history li').count(), 4); // old history kept
     // Worry right away after that: no positive time from the old level.
@@ -1739,7 +1749,8 @@ try {
     await p.screenshot({ path: OUT + '33-saved-comment-sv.png' });
     await p.tap('#saved-done');
     assert.equal(await t('#target-value'), morning);
-    assert.equal(await t('#target-basis'), 'Senaste passet blev kortare – det sänker inte förslaget.');
+    assert.equal(await t('#target-basis'), '');
+    assert.equal(await whyReason(p), 'Senaste passet blev kortare – det sänker inte förslaget.');
     const last = await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.at(-1));
     assert.equal(last.comment, 'Avbröt själv – inte på grund av hunden.');
     assert.ok(await fits(), 'main screen after the session');
@@ -1923,6 +1934,42 @@ try {
     await p.tap('#edit-save');
     await home(p);
     assert.notEqual(await t('#target-value'), '8:00'); // an ordinary hard session now
+    await c.close();
+  });
+
+  await step('reported: "Why 1:40?" instead of a sentence; the suggestion follows your own times', async () => {
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-11-05T10:00:00') });
+    await p.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      const P = [[4, 8, 20, 'g', 20], [4, 9, 30, 'b', 30], [4, 10, 15, 'g', 15], [4, 11, 90, 'b', 25], [4, 12, 105, 'g', 60],
+        [5, 7, 65, 'g', 62], [5, 8, 2, 'g', 62], [5, 8.5, 65, 'g', 62], [5, 9, 85, 'g', 85], [5, 9.5, 97, 'g', 95]];
+      const sessions = P.map(([d, h, sec, r, tg], i) => {
+        const at = new Date(2026, 10, d, Math.floor(h), (h % 1) * 60).getTime();
+        return { id: 'w' + i, dogId: 'charlie', contextId: 'home', startedAt: at, endedAt: at + sec * 1000, durationSec: sec, targetSec: tg, result: r === 'g' ? 'good' : 'bad' };
+      });
+      localStorage.setItem('alone-training:v2', JSON.stringify({ schemaVersion: 2, lang: 'sv', onboarded: true, dogs: [{ id: 'charlie', name: 'Charlie' }],
+        contexts: [{ id: 'home', name: 'Ensam Hemma hela lägenheten' }, { id: 'car', name: 'Övning sovrummet' }, { id: 'outside-shop', name: 'Testfest' }],
+        selectedContextId: 'home', active: null, pending: null, sessions }));
+    });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    assert.equal(await t('#target-value'), '1:40'); // above the 1:37 just done – not 1:35 again
+    assert.equal(await t('#target-basis'), ''); // no sentence that can be wrong
+    assert.equal(await t('#why-btn'), 'Varför 1:40? ›');
+    await p.tap('#why-btn');
+    assert.equal(await t('#why-suggestion'), 'Förslag i dag: 1:40');
+    assert.equal(await t('#why-reason'), 'Två pass i rad gick bra på tider du valt – förslaget utgår från din senaste tid.');
+    assert.equal(await p.locator('#why-sessions li').count(), 5);
+    assert.match(await t('#why-sessions li:first-child'), /1 min 37 s \(mål 1:35\) · Gick bra/);
+    assert.match(await t('#why-typical'), /^Typisk nivå: 1:25/);
+    await p.screenshot({ path: OUT + '36-why-sv.png' });
+    await p.tap('#why-help');
+    assert.ok(await p.isVisible('#page-help'));
+    assert.equal(await p.evaluate(() => document.getElementById('help-calc').open), true);
     await c.close();
   });
 

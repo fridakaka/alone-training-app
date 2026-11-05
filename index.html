@@ -95,6 +95,7 @@
             </div>
           </div>
           <p id="target-basis" class="target-basis"></p>
+          <button id="why-btn" class="btn-link why-link" type="button" hidden></button>
           <div id="target-chips" class="chips"></div>
           <!-- History only: never today's target, never used to compute it. -->
           <div id="history-facts" class="history-facts" role="group" aria-labelledby="history-facts-title" hidden>
@@ -346,6 +347,26 @@
       <p id="overview-empty" class="empty" data-i18n="overviewEmpty" hidden></p>
       <p class="hint" data-i18n="overviewNote"></p>
       <button id="overview-close" type="button" class="btn btn-quiet" data-i18n="close">Close</button>
+    </div>
+  </dialog>
+
+  <!-- "Why …?": the facts behind today's suggestion, instead of a sentence that can be wrong. -->
+  <dialog id="why-dialog" class="sheet" aria-labelledby="why-title">
+    <div class="why">
+      <h2 id="why-title" data-i18n="whyTitle">How today's suggestion was calculated</h2>
+      <p id="why-suggestion" class="why-suggestion"></p>
+      <p id="why-reason"></p>
+      <h3 data-i18n="whyLatest">Latest sessions here</h3>
+      <ol id="why-sessions" class="why-sessions"></ol>
+      <p id="why-typical" class="hint"></p>
+      <h3 data-i18n="whyRulesTitle">The rules in short</h3>
+      <ul class="why-rules">
+        <li data-i18n="whyRule1"></li>
+        <li data-i18n="whyRule2"></li>
+        <li data-i18n="whyRule3"></li>
+      </ul>
+      <button id="why-help" type="button" class="btn-link" data-i18n="whyHelp">The whole explanation under Help ›</button>
+      <button id="why-close" type="button" class="btn btn-quiet" data-i18n="close">Close</button>
     </div>
   </dialog>
 

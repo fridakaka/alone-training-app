@@ -58,6 +58,11 @@ export const SUGGESTION_SETTINGS = Object.freeze({
   // - went well and reached the suggestion → counts as usual; went well but shorter → neutral
   // - didn't go well → one gentler session (80 % of the level), then straight back after 1 good one
   SPECIAL_HARD_RATIO: 0.8,
+
+  // YOUR OWN TIMES: when the two latest sessions went well at targets you chose (sessions without
+  // a target don't count – nobody chose a time), the suggestion builds on your latest time – at most
+  // 25 % above the typical level, so single long sessions still can't make it jump.
+  OWN_MAX_ABOVE_TYPICAL: 1.25,
   // ...but when this many of the latest sessions are marked, they count as ordinary sessions.
   SPECIAL_MANY: 3,
   SPECIAL_WINDOW: 5,
@@ -88,6 +93,7 @@ export const NOTES = Object.freeze({
   ONCE: 'once', // the level went well once – once more before it goes up
   BACK: 'back', // just back at the level from before the hard session
   FOLLOW: 'follow', // several good sessions in a row were shorter: the suggestion followed them
+  OWN: 'own', // two good sessions in a row at times the user chose: the suggestion builds on them
   SPECIAL: 'special', // the latest session had a special circumstance
   MANY_SPECIAL: 'many-special', // many recent sessions are marked special: they count as usual
 });
@@ -144,7 +150,7 @@ export function suggestTarget(sessions, { now = Date.now(), settings = SUGGESTIO
   return {
     kind: base.kind, sec: base.sec ?? null, level: base.level ?? null, repeatSec, earlierLevel,
     hard: base.hard ?? null, fromOnset: base.fromOnset === true, note: base.note ?? null,
-    step: base.step ?? null, backTo: base.backTo ?? null,
+    step: base.step ?? null, backTo: base.backTo ?? null, typical: base.typical ?? null,
   };
 }
 
@@ -215,7 +221,7 @@ function decide(logged, relevant, since, S, specials = new Set()) {
   if (typical == null && note == null && goods.length < S.ANCHOR_MIN_SESSIONS) return { kind: KINDS.LIMITED, sec: lvl, level: lvl, lastGood };
   // Older sessions dropped out of the latest 10 and the level went down with them.
   if (note == null && lastGood && typical != null && typical < (typicalLevel(goods.slice(0, -1), S) ?? 0)) note = NOTES.FOLLOW;
-  return atLevel(streak, lvl, lastGood, S, note);
+  return { ...atLevel(streak, lvl, lastGood, S, note), typical };
 }
 
 // No hard session limits the suggestion: the level, or a small increase once the two latest
@@ -235,6 +241,11 @@ function atLevel(streak, typical, lastGood, S, note = null) {
     return { level: typical, sec: typical, last: counted[counted.length - 1] };
   };
   const now = decide(streak);
+  // Your own longer times: the two latest sessions both went well at the time chosen for them.
+  const own = ownTimes(streak, typical, S);
+  if (own && own.sec > now.sec && note !== NOTES.BACK) {
+    return { sec: own.sec, level: own.level, lastGood, kind: own.sec > own.level ? KINDS.RAISE : KINDS.REPEAT, note: NOTES.OWN };
+  }
   const { sec, level } = now;
   const out = { sec, level, lastGood };
   // "Shorter": the latest session ended before the suggestion that applied to it.
@@ -244,6 +255,21 @@ function atLevel(streak, typical, lastGood, S, note = null) {
   if (shorter) return { ...out, kind: KINDS.REPEAT, note: NOTES.SHORTER };
   const once = now.last && now.last.result === 'good' && now.last.durationSec >= S.CONFIRM_TOLERANCE * typical;
   return { ...out, kind: KINDS.REPEAT, note: once ? NOTES.ONCE : null };
+}
+
+// Two good sessions in a row that reached the targets the user chose, the latest above the
+// typical level → small increase from the latest target, capped at 25 % above the typical level.
+// Returns null when it doesn't apply.
+function ownTimes(streak, typical, S) {
+  const [a, b] = streak.slice(-2);
+  if (!a || !b || a.result !== 'good' || b.result !== 'good' || typical == null) return null;
+  const chosen = (s) => (Number.isFinite(s.targetSec) && s.targetSec > 0 ? s.targetSec : null);
+  if (![a, b].every((s) => chosen(s) != null && s.durationSec >= S.CONFIRM_TOLERANCE * chosen(s))) return null;
+  const latest = floorNatural(chosen(b));
+  if (!(latest > typical)) return null;
+  const cap = floorNatural(typical * S.OWN_MAX_ABOVE_TYPICAL);
+  const level = Math.min(latest, cap);
+  return { level, sec: Math.min(raiseFrom(level, S), cap) };
 }
 
 // The latest hard session: lower (below the worry time, if known), then back to the typical

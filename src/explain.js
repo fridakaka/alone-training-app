@@ -12,6 +12,16 @@
 import { KINDS, HARD, NOTES, SUGGESTION_SETTINGS } from './suggestion.js';
 import { formatTarget } from './progression.js';
 
+// The short line under today's time is only shown when something particular happened that you
+// should know without tapping: a hard session, a special circumstance, a break, or no automatic
+// time. Ordinary increases/repeats are explained in the "Why …?" sheet instead (v0.15).
+export function shownUnderTime(suggestion) {
+  const { kind, note, sec } = suggestion;
+  if ([NOTES.SPECIAL, NOTES.MANY_SPECIAL, NOTES.BACK].includes(note)) return true;
+  if ([KINDS.EASIER, KINDS.RECOVER, KINDS.HARD_CHOOSE, KINDS.WORRIED_AT_ONCE, KINDS.BREAK, KINDS.TOO_LITTLE, KINDS.NONE].includes(kind)) return true;
+  return kind === KINDS.LIMITED && sec == null;
+}
+
 /** @returns {{ key: string, params?: object }} an i18n key (+ parameters) for the suggestion */
 export function explanationKey(suggestion) {
   const { kind, sec, hard, fromOnset, note, step, backTo } = suggestion;
@@ -26,9 +36,12 @@ export function explanationKey(suggestion) {
   // A good session that ended before the suggestion never lowers it – say so.
   if (note === NOTES.SHORTER && [KINDS.RAISE, KINDS.REPEAT, KINDS.RECOVER].includes(kind)) return { key: 'explainShorter' };
   switch (kind) {
-    case KINDS.RAISE: return { key: note === NOTES.FOLLOW ? 'explainFollow' : 'explainRaise' };
+    case KINDS.RAISE:
+      if (note === NOTES.OWN) return { key: 'explainOwn' };
+      return { key: note === NOTES.FOLLOW ? 'explainFollow' : 'explainRaise' };
     case KINDS.REPEAT:
       if (note === NOTES.FOLLOW) return { key: 'explainFollow' };
+      if (note === NOTES.OWN) return { key: 'explainOwnCap' };
       if (note === NOTES.BACK) return { key: 'explainBack' };
       return { key: note === NOTES.ONCE ? 'explainRepeatOnce' : 'explainRepeat' };
     case KINDS.RECOVER:

@@ -454,3 +454,26 @@ test('many marked sessions count as ordinary sessions again (and the app says so
   assert.equal(r.note, NOTES.MANY_SPECIAL);
   assert.ok(r.sec == null || r.sec < 480, `treated as ordinary hard sessions: ${r.sec}`);
 });
+
+// ---------- v0.15: your own times ----------
+test('reported: two good sessions in a row at times you chose → the suggestion builds on your latest time', () => {
+  const plan = [[7, 65, 62], [8, 2, 62], [8.5, 65, 62], [9, 85, 85], [9.5, 97, 95]];
+  const ss = [g(1, 8, 20, 20), b(1, 9, 30, 30), g(1, 10, 15, 15), b(1, 11, 90, 25), g(1, 12, 105, 60),
+    ...plan.map(([h, sec, t]) => good(0, sec, { hour: h, targetSec: t }))];
+  const r = suggest(ss, new Date(new Date(NOW).setHours(10, 0, 0, 0)).getTime());
+  assert.equal(r.note, NOTES.OWN);
+  assert.equal(r.sec, 100); // 1:40 – above the 1:37 just done, not 1:35 or lower
+  assert.equal(r.typical, 85);
+});
+
+test('your own times: at most 25 % above the typical level; sessions without a target never count as chosen', () => {
+  const base = [g(3, 9, 60, 60), g(3, 10, 60, 60), g(3, 11, 60, 60)]; // typical 1:00
+  const big = suggest([...base, g(2, 9, 1080, 1080), g(2, 10, 1080, 1080)]); // two 18-min sessions you chose
+  assert.equal(big.sec, 75); // capped: 1:00 × 1.25
+  const unplanned = suggest([...base, g(2, 9, 1080), g(2, 10, 1080)]);
+  assert.notEqual(unplanned.note, NOTES.OWN);
+  assert.ok(unplanned.sec <= 75);
+  // A chosen target that was NOT reached doesn't count.
+  const missed = suggest([...base, g(2, 9, 90, 90), g(2, 10, 70, 90)]);
+  assert.notEqual(missed.note, NOTES.OWN);
+});
