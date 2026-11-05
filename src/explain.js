@@ -18,7 +18,7 @@ import { formatTarget } from './progression.js';
 export function shownUnderTime(suggestion) {
   const { kind, note, sec } = suggestion;
   if ([NOTES.SPECIAL, NOTES.MANY_SPECIAL, NOTES.BACK].includes(note)) return true;
-  if ([KINDS.EASIER, KINDS.RECOVER, KINDS.HARD_CHOOSE, KINDS.WORRIED_AT_ONCE, KINDS.BREAK, KINDS.TOO_LITTLE, KINDS.NONE].includes(kind)) return true;
+  if ([KINDS.EASY, KINDS.EASIER, KINDS.RECOVER, KINDS.HARD_CHOOSE, KINDS.WORRIED_AT_ONCE, KINDS.BREAK, KINDS.TOO_LITTLE, KINDS.NONE].includes(kind)) return true;
   return kind === KINDS.LIMITED && sec == null;
 }
 
@@ -36,6 +36,8 @@ export function explanationKey(suggestion) {
   // A good session that ended before the suggestion never lowers it – say so.
   if (note === NOTES.SHORTER && [KINDS.RAISE, KINDS.REPEAT, KINDS.RECOVER].includes(kind)) return { key: 'explainShorter' };
   switch (kind) {
+    case KINDS.EASY:
+      return { key: 'explainEasy', params: { time: formatTarget(suggestion.regularSec ?? sec ?? 0) } };
     case KINDS.RAISE:
       if (note === NOTES.OWN) return { key: 'explainOwn' };
       return { key: note === NOTES.FOLLOW ? 'explainFollow' : 'explainRaise' };

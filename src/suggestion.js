@@ -63,6 +63,12 @@ export const SUGGESTION_SETTINGS = Object.freeze({
   // a target don't count – nobody chose a time), the suggestion builds on your latest time – at most
   // 25 % above the typical level, so single long sessions still can't make it jump.
   OWN_MAX_ABOVE_TYPICAL: 1.25,
+  // Easy sessions (v0.17): every 3rd–5th session (random, but stable) is half the typical level,
+  // so the dog doesn't learn that every session is longer than the last.
+  EASY_SESSIONS: true, // false: never suggest an easy session (sessions marked easy still count as such)
+  EASY_EVERY_MIN: 3,
+  EASY_EVERY_MAX: 5,
+  EASY_RATIO: 0.5,
   // ...but when this many of the latest sessions are marked, they count as ordinary sessions.
   SPECIAL_MANY: 3,
   SPECIAL_WINDOW: 5,
@@ -79,6 +85,7 @@ export const KINDS = Object.freeze({
   BREAK: 'break', // nothing logged in the window => user chooses
   TOO_LITTLE: 'too-little', // logged recently, but nothing usable (e.g. all marked "don't count")
   NONE: 'none', // nothing logged in this context
+  EASY: 'easy', // a planned easy session: half the typical level (the regular time is regularSec)
 });
 
 // Which hard session limits the suggestion (for EASIER / RECOVER / HARD_CHOOSE / WORRIED_AT_ONCE):
@@ -115,7 +122,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export function suggestTarget(sessions, { now = Date.now(), settings = SUGGESTION_SETTINGS } = {}) {
   const S = settings;
-  const logged = sessions.filter(isValid).filter((s) => s.startedAt <= now).sort((a, b) => a.startedAt - b.startedAt);
+  const all = sessions.filter(isValid).filter((s) => s.startedAt <= now).sort((a, b) => a.startedAt - b.startedAt);
+  // A planned easy session that went well is neutral (it neither raises nor lowers anything),
+  // unless the dog stayed about as long as a regular session would have been.
+  const logged = all.filter((s) => !isNeutralEasy(s, S));
   const since = now - S.WINDOW_DAYS * DAY_MS;
   // Special circumstances: ignored as such when many of the latest sessions are marked.
   const manySpecial = logged.slice(-S.SPECIAL_WINDOW).filter(isSpecial).length >= S.SPECIAL_MANY;
@@ -147,11 +157,46 @@ export function suggestTarget(sessions, { now = Date.now(), settings = SUGGESTIO
     repeatSec = floorNatural(base.lastGood.durationSec);
     if (repeatSec > base.sec * S.REPEAT_MAX_RATIO || repeatSec < 1) repeatSec = null;
   }
-  return {
+  const out = {
     kind: base.kind, sec: base.sec ?? null, level: base.level ?? null, repeatSec, earlierLevel,
     hard: base.hard ?? null, fromOnset: base.fromOnset === true, note: base.note ?? null,
-    step: base.step ?? null, backTo: base.backTo ?? null, typical: base.typical ?? null,
+    step: base.step ?? null, backTo: base.backTo ?? null, typical: base.typical ?? null, regularSec: null,
   };
+  return easyTurn(all, out, S) ?? out;
+}
+
+/** A planned easy session (marked when it was started with the easy suggestion). */
+export function isEasy(s) {
+  return s?.easy === true;
+}
+
+function isNeutralEasy(s, S) {
+  return isEasy(s) && s.result === 'good' && s.targetSec > 0 && s.durationSec < S.CONFIRM_TOLERANCE * s.targetSec / S.EASY_RATIO;
+}
+
+// How many sessions come between easy ones: 3, 4 or 5, picked from the start time of the
+// previous easy session (or the first session) – random-looking, but the same on every render.
+export function easyEvery(seedMs, S = SUGGESTION_SETTINGS) {
+  const span = S.EASY_EVERY_MAX - S.EASY_EVERY_MIN + 1;
+  const x = Math.imul(Math.floor(seedMs / 1000) | 0, 2654435761) >>> 0;
+  return S.EASY_EVERY_MIN + ((((x >>> 13) ^ x) >>> 0) % span);
+}
+
+// Is the next session an easy one? Only on an ordinary day (an increase or the same time); never
+// after a hard session, a break or a special circumstance – the suggestion is careful then anyway.
+function easyTurn(all, sug, S) {
+  if (!S.EASY_SESSIONS) return null;
+  if (![KINDS.RAISE, KINDS.REPEAT].includes(sug.kind) || sug.sec == null) return null;
+  if ([NOTES.SPECIAL, NOTES.MANY_SPECIAL, NOTES.BACK].includes(sug.note)) return null;
+  const base = sug.typical ?? sug.level;
+  const sec = base ? floorNatural(base * S.EASY_RATIO) : 0;
+  if (sec < 1 || sec >= sug.sec) return null;
+  const lastEasy = findLastIndex(all, isEasy);
+  // Sessions since the latest easy one (with none yet: all of them).
+  const since = all.length - lastEasy - 1;
+  const every = easyEvery((lastEasy >= 0 ? all[lastEasy] : all[0])?.startedAt ?? 0, S);
+  if (since < every - 1) return null; // the easy one is the 3rd/4th/5th session
+  return { ...sug, kind: KINDS.EASY, sec, regularSec: sug.sec, repeatSec: null, note: null };
 }
 
 // A session the user marked "special circumstance" (stored as `uncertain`, the name of the

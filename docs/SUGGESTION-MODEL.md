@@ -45,6 +45,25 @@ The rules that protect against extreme values are kept: a single session never s
 long session can't make the suggestion jump, the end time of a hard session is never treated as
 tolerated, and the earlier stable level is never a target, a share of one or a floor.
 
+## Easy sessions (v0.17)
+
+Separation-anxiety trainers advise against making every session longer than the last: the dog can
+learn that it always gets harder. So easier sessions are mixed in.
+
+- **When:** every 3rd–5th session in a place. The gap (3, 4 or 5) is picked "at random" from the start
+  time of the previous easy session (or the first session) – the same on every screen, and roughly
+  equally often 3, 4 and 5.
+- **How long:** half the typical level (rounded down to the usual steps). The regular time is kept
+  (`regularSec`) and shown in the "Why …?" sheet as the next regular session.
+- **Only on an ordinary day:** an increase or the same time. Never after a hard session, a break,
+  a special circumstance, or without a basis (the suggestion is careful then anyway).
+- **Not optional:** no shortcut to the regular time. You can always let the session run longer.
+- **Marked** when started with the easy time (`easy: true`, kept in backups, "Easy session" in Excel).
+- **Effect:** one that goes well is neutral – it neither raises nor lowers anything and gives no
+  "it was shorter" note – unless the dog stayed about as long as a regular session (≥ 95 % of twice
+  the easy target); then it counts like any good session. One that doesn't go well counts like any
+  hard session.
+
 ## Earlier stable level (history only)
 
 The longest time that ≥ 2 good sessions on ≥ 2 different days (within 7 days of each other)
@@ -138,6 +157,8 @@ From "No target", **+** opens time entry instead of guessing a time. Tapping the
 | 24 | reported: good at your own targets 1:25 and 1:35 (typical 1:25) | **1:40** (before: 1:35 with "small increase") |
 | 23 | reported: level 10:00, didn't go well (vacuum outside, marked) | **8:00** once, then back to 10:00 (unmarked: 0:24 and 3 steps back) |
 | 22 | reported: two good sessions at the suggested 0:45 | **0:50** (before: 0:45 again, although the text said "small increase") |
+| 25 | following the suggestions for 60 sessions | an easy session (half the level) every 3rd–5th, the regular times exactly as without them |
+| 26 | 3 × 10:00 good, then an easy 5:00 that went well | next: **11:00**, no "shorter" note |
 
 ## What the app cannot know
 

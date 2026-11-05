@@ -31,7 +31,7 @@ import {
 import { loadState, saveState } from './store.js';
 import { renderChart, renderOverview, hasClippedBars, resultText, MAX_BARS } from './chart.js';
 import { stepUp, stepDown, formatTarget, MIN_TARGET_SEC } from './progression.js';
-import { suggestTarget, KINDS } from './suggestion.js';
+import { suggestTarget, KINDS, SUGGESTION_SETTINGS } from './suggestion.js';
 import { explanationKey, longestGoodSession, shownUnderTime } from './explain.js';
 import {
   buildBackup, parseBackup, mergeSessions, buildCsv, backupFileName, importSummary,
@@ -335,9 +335,10 @@ function syncReminder() {
 // ---------- actions ----------
 
 $('start-btn').addEventListener('click', () => {
-  const targetSec = currentTarget().value;
+  const { value: targetSec, suggestion } = currentTarget();
   delete draftTargets[contextId()];
-  update(startSession(state, { ...current(), targetSec, now: Date.now() }));
+  const easy = suggestion.kind === KINDS.EASY && targetSec === suggestion.sec;
+  update(startSession(state, { ...current(), targetSec, easy, now: Date.now() }));
 });
 
 $('context-picker').addEventListener('click', (e) => {
@@ -417,8 +418,13 @@ function setDraft(value) {
 
 // What the ready screen currently offers for the selected context.
 // The suggestion is always derived from the history – never stored.
+// Only the end-to-end tests turn easy sessions off (to test the base rules on their own).
+function suggestionSettings() {
+  return globalThis.__aloneTimeTest?.noEasySessions ? { ...SUGGESTION_SETTINGS, EASY_SESSIONS: false } : SUGGESTION_SETTINGS;
+}
+
 function currentTarget() {
-  const suggestion = suggestTarget(sessionsFor(state, current()), { now: Date.now() });
+  const suggestion = suggestTarget(sessionsFor(state, current()), { now: Date.now(), settings: suggestionSettings() });
   const ctx = contextId();
   const value = ctx in draftTargets ? draftTargets[ctx] : suggestion.sec;
   return { suggestion, suggested: suggestion.sec, repeat: suggestion.repeatSec, value };
@@ -428,7 +434,7 @@ function currentTarget() {
 // Never "the dog can …" – the journal can't establish that.
 function explanation(suggestion) {
   const { key, params } = explanationKey(suggestion);
-  return key ? t(key, params) : '';
+  return key ? t(key, { dog: dogName(), ...params }) : '';
 }
 
 $('end-btn').addEventListener('click', () => {
@@ -755,7 +761,8 @@ function renderReady() {
 
   // A short line only when something particular happened; the "Why …?" sheet has the facts.
   // When the user has set their own target, the line says what the APP suggests.
-  const reason = shownUnderTime(suggestion) ? explanation(suggestion) : '';
+  // An easy session: a short label here; the full reason is in the "Why …?" sheet.
+  const reason = suggestion.kind === KINDS.EASY ? t('easyUnderTime') : shownUnderTime(suggestion) ? explanation(suggestion) : '';
   $('target-basis').textContent = own
     ? `${suggested == null ? t('appSuggestionNone') : t('appSuggestion', { time: formatTarget(suggested) })} ${reason}`.trim()
     : reason;

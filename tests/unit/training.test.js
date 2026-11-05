@@ -113,7 +113,11 @@ test('suggestions are independent per context (no borrowing between contexts)', 
   }
   s = runSession(s, 'outside-shop', 120, 'bad', { start: T0 + 2 * DAY + 7200e3, });
   const now = T0 + 3 * DAY;
-  const next = (st, ctx) => suggestTarget(sessionsFor(st, { dogId: 'charlie', contextId: ctx }), { now });
+  // The regular time (an easy session, every 3rd–5th, would be half of it).
+  const next = (st, ctx) => {
+    const sug = suggestTarget(sessionsFor(st, { dogId: 'charlie', contextId: ctx }), { now });
+    return { ...sug, sec: sug.regularSec ?? sug.sec };
+  };
   assert.equal(next(s, 'home').sec, 1320);
   assert.equal(next(s, 'car').sec, 330);
   assert.equal(next(s, 'outside-shop').kind, KINDS.HARD_CHOOSE); // no data borrowed from Home/Car
@@ -363,4 +367,16 @@ test('first start: language, dog name and default place names in that language',
   assert.equal(s.lang, 'sv');
   assert.equal(s.dogs[0].name, 'Majken');
   assert.deepEqual(s.contexts.map((c) => [c.id, c.name]), [['home', 'Hemma'], ['car', 'Bilen'], ['outside-shop', 'Utanför affären']]);
+});
+
+test('a planned easy session is marked from start to the saved session (only with a target)', () => {
+  let s = startSession(createInitialState(), { ...where, targetSec: 300, easy: true, now: 0 });
+  assert.equal(s.active.easy, true);
+  s = endSession(s, 200_000);
+  assert.equal(s.pending.easy, true);
+  s = recordResult(s, RESULTS.GOOD);
+  assert.equal(s.sessions[0].easy, true);
+  // Not easy, or no target: no mark at all.
+  assert.equal('easy' in startSession(createInitialState(), { ...where, targetSec: 300, now: 0 }).active, false);
+  assert.equal('easy' in startSession(createInitialState(), { ...where, easy: true, now: 0 }).active, false);
 });

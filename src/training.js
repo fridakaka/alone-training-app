@@ -128,9 +128,12 @@ export function selectContext(state, contextId) {
 
 // targetSec is only a note of intent (number of seconds or null).
 // It never stops or changes the timer.
-export function startSession(state, { dogId, contextId, targetSec = null, now = Date.now() }) {
+export function startSession(state, { dogId, contextId, targetSec = null, easy = false, now = Date.now() }) {
   if (state.active) return state;
-  return { ...state, active: { dogId, contextId, targetSec: normalizeTarget(targetSec), startedAt: now } };
+  const active = { dogId, contextId, targetSec: normalizeTarget(targetSec), startedAt: now };
+  // A planned easy session (started with the easy suggestion) – see suggestion.js.
+  if (easy === true && active.targetSec) active.easy = true;
+  return { ...state, active };
 }
 
 function normalizeTarget(t) {
@@ -146,7 +149,7 @@ export function elapsedSeconds(active, now = Date.now()) {
 // It is kept in state so it survives the app being closed before rating.
 export function endSession(state, now = Date.now()) {
   if (!state.active) return state;
-  const { dogId, contextId, startedAt, targetSec = null } = state.active;
+  const { dogId, contextId, startedAt, targetSec = null, easy } = state.active;
   const pending = {
     dogId,
     contextId,
@@ -155,6 +158,7 @@ export function endSession(state, now = Date.now()) {
     durationSec: elapsedSeconds(state.active, now), // actual duration
     targetSec,
   };
+  if (easy === true) pending.easy = true;
   return { ...state, active: null, pending };
 }
 

@@ -3,10 +3,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  suggestTarget, anchor, raiseFrom, stableLevelBefore, KINDS, HARD, NOTES,
+  suggestTarget, anchor, raiseFrom, stableLevelBefore, easyEvery, KINDS, HARD, NOTES,
   SUGGESTION_SETTINGS as S,
 } from '../../src/suggestion.js';
-import { formatTarget } from '../../src/progression.js';
+import { formatTarget, floorNatural } from '../../src/progression.js';
 
 const DAY = 24 * 3600 * 1000;
 const NOW = new Date(2026, 9, 20, 18, 0).getTime(); // local time, fixed reference
@@ -18,7 +18,9 @@ const at = (daysAgo, hour = 10) => {
 let n = 0;
 const good = (daysAgo, sec, extra = {}) => ({ id: `g${n++}`, startedAt: at(daysAgo, extra.hour ?? 10), durationSec: sec, result: 'good', ...extra });
 const bad = (daysAgo, sec, extra = {}) => ({ id: `b${n++}`, startedAt: at(daysAgo, extra.hour ?? 10), durationSec: sec, result: 'bad', ...extra });
-const suggest = (sessions, now = NOW) => suggestTarget(sessions, { now });
+// The base model; easy sessions (every 3rd–5th) are tested on their own at the end of the file.
+const BASE = { ...S, EASY_SESSIONS: false };
+const suggest = (sessions, now = NOW, settings = BASE) => suggestTarget(sessions, { now, settings });
 
 const OLD_TWO_HOURS = () => [good(16, 7200), good(15, 7200), good(14, 7200)];
 
@@ -476,4 +478,86 @@ test('your own times: at most 25 % above the typical level; sessions without a t
   // A chosen target that was NOT reached doesn't count.
   const missed = suggest([...base, g(2, 9, 90, 90), g(2, 10, 70, 90)]);
   assert.notEqual(missed.note, NOTES.OWN);
+});
+
+// ---------- Easy sessions (v0.17): every 3rd–5th session is half the typical level ----------
+
+// Plays a journal: each session follows the suggestion, goes well and ends at its target
+// (an easy session is marked the way the app marks it when it is started with the easy time).
+function play(count, { start = at(30), gapH = 5, settings = S, result = () => 'good', length = (sug, target) => target } = {}) {
+  const list = [];
+  const sugs = [];
+  for (let i = 0; i < count; i++) {
+    const t0 = start + i * gapH * 3600e3;
+    const sug = suggestTarget(list, { now: t0, settings });
+    sugs.push(sug);
+    const target = sug.sec ?? 120;
+    list.push({ id: `p${n++}`, startedAt: t0, durationSec: length(sug, target), targetSec: target, result: result(i, sug), ...(sug.kind === KINDS.EASY ? { easy: true } : {}) });
+  }
+  return { list, sugs };
+}
+
+test('easy sessions: every 3rd–5th session, never two in a row, the same on every render', () => {
+  const { list, sugs } = play(60);
+  const easyAt = sugs.flatMap((s, i) => (s.kind === KINDS.EASY ? [i] : []));
+  assert.ok(easyAt.length >= 10, `${easyAt}`);
+  const gaps = easyAt.slice(1).map((x, i) => x - easyAt[i]);
+  for (const g of gaps) assert.ok(g >= 3 && g <= 5, `gaps ${gaps}`);
+  assert.ok(new Set(gaps).size >= 2, `random-looking, not always the same gap: ${gaps}`);
+  // Same sessions → same answer (nothing random at render time).
+  const now = list.at(-1).startedAt + 3600e3;
+  assert.deepEqual(suggestTarget(list, { now }), suggestTarget(list, { now }));
+  // The gap is 3, 4 or 5, about equally often.
+  const count = { 3: 0, 4: 0, 5: 0 };
+  for (let i = 0; i < 3000; i++) count[easyEvery(1.7e12 + i * 3.7e6)]++;
+  for (const k of [3, 4, 5]) assert.ok(count[k] > 850, JSON.stringify(count));
+});
+
+test('easy session: half the typical level, the regular time is kept, no "repeat" shortcut', () => {
+  const { sugs } = play(30);
+  for (const sug of sugs.filter((x) => x.kind === KINDS.EASY)) {
+    assert.equal(sug.sec, floorNatural(sug.typical * 0.5));
+    assert.ok(sug.regularSec > sug.sec);
+    assert.equal(sug.repeatSec, null);
+  }
+});
+
+test('an easy session that went well changes nothing – the progression just continues', () => {
+  const withEasy = play(30).sugs.filter((x) => x.kind !== KINDS.EASY).map((x) => x.sec);
+  const without = play(30 - play(30).sugs.filter((x) => x.kind === KINDS.EASY).length, { settings: BASE }).sugs.map((x) => x.sec);
+  assert.deepEqual(withEasy, without);
+  // Also when it ended before the easy target, or the dog was fine for longer (but under the
+  // regular level): still neutral.
+  for (const factor of [0.5, 1.5]) {
+    const sugs = play(30, { length: (sug, target) => (sug.kind === KINDS.EASY ? Math.round(target * factor) : target) }).sugs;
+    assert.deepEqual(sugs.filter((x) => x.kind !== KINDS.EASY).map((x) => x.sec), withEasy, `factor ${factor}`);
+  }
+});
+
+test('an easy session where the dog stayed as long as a regular session counts like one', () => {
+  const before = [good(4, 600, { targetSec: 600 }), good(3, 600, { targetSec: 600 }), good(2, 600, { targetSec: 600 }), good(1.5, 660, { targetSec: 660 })];
+  const neutral = suggest([...before, good(1, 330, { targetSec: 300, easy: true })]);
+  const counted = suggest([...before, good(1, 660, { targetSec: 300, easy: true })]);
+  assert.equal(neutral.sec, suggest(before).sec); // a little longer than the easy time: neutral
+  assert.ok(counted.sec > neutral.sec, `${counted.sec} > ${neutral.sec}`); // 11 min at 11 min: a second good one there
+});
+
+test('an easy session that did not go well counts like any hard session', () => {
+  const { list } = play(12);
+  const i = list.findIndex((s) => s.easy);
+  const hard = { ...list[i], result: 'bad', anxietyOnsetSec: Math.round(list[i].durationSec / 2) };
+  const sug = suggestTarget([...list.slice(0, i), hard], { now: hard.startedAt + 3600e3 });
+  assert.equal(sug.kind, KINDS.EASIER);
+  assert.equal(sug.hard, HARD.LATEST);
+});
+
+test('no easy session after a hard session, a break, or a special circumstance', () => {
+  // Every session would be "due" with this setting – only the circumstances stop it.
+  const always = { ...S, EASY_EVERY_MIN: 1, EASY_EVERY_MAX: 1 };
+  const ok = [good(3, 600, { targetSec: 600 }), good(2, 600, { targetSec: 600 }), good(1, 600, { targetSec: 600 })];
+  assert.equal(suggest(ok, NOW, always).kind, KINDS.EASY);
+  assert.notEqual(suggest([...ok, bad(0.5, 300, { anxietyOnsetSec: 200 })], NOW, always).kind, KINDS.EASY);
+  assert.equal(suggest([good(30, 600), good(29, 600), good(28, 600)], NOW, always).kind, KINDS.BREAK);
+  assert.notEqual(suggest([...ok, good(0.5, 300, { uncertain: true })], NOW, always).kind, KINDS.EASY);
+  assert.notEqual(suggest([], NOW, always).kind, KINDS.EASY);
 });

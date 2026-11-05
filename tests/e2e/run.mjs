@@ -15,8 +15,10 @@ const browser = await launch();
 const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: 'en-US' };
 const errors = [];
 
-async function newPhoneContext(options) {
+// easySessions: false (default) tests the base suggestion rules; the easy-session step turns them on.
+async function newPhoneContext(options, { easySessions = false } = {}) {
   const context = await browser.newContext(options);
+  if (!easySessions) await context.addInitScript(() => { globalThis.__aloneTimeTest = { noEasySessions: true }; });
   // Keep file export tests on the browser download path on hosts that support file sharing.
   await context.addInitScript(() => Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false }));
   return context;
@@ -506,8 +508,8 @@ try {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.tap('#csv-btn')]);
     const csv = await readFile(await dl.path(), 'utf8');
     const lines = csv.trim().split('\r\n');
-    assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Place ID;Comment');
-    assert.match(csv, /;Didn't go well;20;0:20;;(car|outside-shop)/);
+    assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Easy session;Place ID;Comment');
+    assert.match(csv, /;Didn't go well;20;0:20;;;(car|outside-shop)/);
     const total = await page.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length);
     assert.equal(lines.length - 2, total);
     await page.locator('#data-section').screenshot({ path: OUT + '11-data.png' });
@@ -883,9 +885,9 @@ try {
     await open(p, 'data');
     const [csvDl] = await Promise.all([p.waitForEvent('download'), p.tap('#csv-btn')]);
     const csv = await readFile(await csvDl.path(), 'utf8');
-    assert.match(csv, /;Bilburen;300;5:00;;;Went well;;;;car;\r\n/);
+    assert.match(csv, /;Bilburen;300;5:00;;;Went well;;;;;car;\r\n/);
     assert.match(csv, /;Hela lägenheten;60;1:00;/);
-    assert.match(csv, /;Utanför affären;40;0:40;;;Didn't go well;;;;outside-shop/);
+    assert.match(csv, /;Utanför affären;40;0:40;;;Didn't go well;;;;;outside-shop/);
 
     // New backup with own names.
     await open(p, 'data');
@@ -2001,6 +2003,53 @@ try {
     await p.tap('#why-help');
     assert.ok(await p.isVisible('#page-help'));
     assert.equal(await p.evaluate(() => document.getElementById('help-calc').open), true);
+    await c.close();
+  });
+
+  await step('easy sessions: every 3rd–5th session is half the level, marked when started, changes nothing', async () => {
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' }, { easySessions: true });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-11-05T10:00:00') });
+    await p.addInitScript(() => {
+      if (sessionStorage.getItem('seeded')) return;
+      sessionStorage.setItem('seeded', '1');
+      // Three good 10-minute sessions at 08:00 – with these start times the 4th is an easy one.
+      const sessions = [2, 3, 4].map((d, i) => {
+        const at = new Date(2026, 10, d, 8).getTime();
+        return { id: 'e' + i, dogId: 'charlie', contextId: 'home', startedAt: at, endedAt: at + 600e3, durationSec: 600, targetSec: 600, result: 'good' };
+      });
+      localStorage.setItem('alone-training:v2', JSON.stringify({ schemaVersion: 2, lang: 'sv', onboarded: true, dogs: [{ id: 'charlie', name: 'Charlie' }],
+        contexts: [{ id: 'home', name: 'Hemma' }, { id: 'car', name: 'Bilen' }, { id: 'outside-shop', name: 'Utanför affären' }],
+        selectedContextId: 'home', active: null, pending: null, sessions }));
+    });
+    await p.goto(APP);
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    assert.equal(await t('#target-value'), '5:00'); // half of the 10-minute level
+    assert.equal(await t('#target-basis'), 'Lätt pass i dag – halva den vanliga nivån.');
+    assert.doesNotMatch(await t('#target-chips'), /\d:\d\d/); // no shortcut to a longer time (only "no target")
+    assert.equal(await t('#why-btn'), 'Varför 5:00? ›');
+    await p.tap('#why-btn');
+    assert.equal(await t('#why-reason'), 'Lätt pass: halva den vanliga nivån. Vart 3:e–5:e pass är lättare, så att Charlie inte lär sig att det alltid blir längre. Det sänker ingenting – nästa vanliga pass 11:00. Du kan alltid låta det bli längre.');
+    await p.screenshot({ path: OUT + '37-easy-why-sv.png' });
+    await p.tap('#why-close');
+    await p.screenshot({ path: OUT + '38-easy-sv.png' });
+
+    // Started with the easy time → marked as easy; it went well → the regular time follows.
+    await p.tap('#start-btn');
+    assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).active.easy), true);
+    await p.clock.runFor(301_000);
+    await p.tap('#end-btn');
+    await p.tap('#good-btn');
+    await p.tap('#saved-done');
+    const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.at(-1));
+    assert.equal(saved.easy, true);
+    assert.equal(await t('#target-value'), '11:00');
+    assert.equal(await t('#target-basis'), ''); // an ordinary day again, no "it was shorter"
+
+    // The help page explains it.
+    await open(p, 'help');
+    assert.match(await p.textContent('#help-calc'), /Lätta pass: vart 3:e–5:e pass \(slumpvis\) är halva den typiska nivån/);
     await c.close();
   });
 

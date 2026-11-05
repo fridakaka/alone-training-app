@@ -82,14 +82,14 @@ test('Excel export has one row per session, oldest first, semicolon separated', 
   const state = { ...createInitialState(), sessions: [sess('s2', { contextId: 'outside-shop', targetSec: 120, result: 'bad' }), sess('s1')] };
   const lines = buildCsv(state).trim().split('\r\n');
   assert.equal(lines[0], 'sep=;');
-  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Place ID;Comment');
+  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Easy session;Place ID;Comment');
   assert.equal(lines.length, 4);
-  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well;;;;home;$/);
-  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;;outside-shop;$/);
+  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well;;;;;home;$/);
+  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;;;outside-shop;$/);
   const withNew = { ...state, sessions: [sess('s3', { result: 'bad', anxietyOnsetSec: 45 }), sess('s4', { uncertain: true })] };
   const [, , a, b] = buildCsv(withNew).trim().split('\r\n');
-  assert.match(a, /;Didn't go well;45;0:45;;home;$/);
-  assert.match(b, /;Went well;;;Yes;home;$/);
+  assert.match(a, /;Didn't go well;45;0:45;;;home;$/);
+  assert.match(b, /;Went well;;;Yes;;home;$/);
 });
 
 test('backup file name contains the date', () => {
@@ -227,4 +227,20 @@ test('"Start here" ticks are in the backup, read back, and unknown steps are dro
   assert.deepEqual(parsed.prepDone, ['prepStep1', 'prepStep3']);
   assert.deepEqual(parseBackup(JSON.stringify({ sessions: [] })).prepDone, []); // older backups
   assert.deepEqual(setPrepDone(st, 'prepStep1', false).prepDone, ['prepStep3']);
+});
+
+test('easy sessions survive a backup; the Excel file says which were easy', () => {
+  const state = {
+    ...createInitialState(),
+    sessions: [
+      { id: 'a', dogId: 'charlie', contextId: 'home', startedAt: 1_000, endedAt: 301_000, durationSec: 300, targetSec: 300, result: 'good', easy: true },
+      { id: 'b', dogId: 'charlie', contextId: 'home', startedAt: 9_000_000, endedAt: 9_600_000, durationSec: 600, targetSec: 600, result: 'good' },
+    ],
+  };
+  const { sessions } = parseBackup(buildBackup(state));
+  assert.equal(sessions[0].easy, true);
+  assert.equal('easy' in sessions[1], false);
+  const rows = buildCsv(state).trim().split('\r\n');
+  assert.match(rows[2], /;Went well;;;;Yes;home;$/);
+  assert.match(rows[3], /;Went well;;;;;home;$/);
 });

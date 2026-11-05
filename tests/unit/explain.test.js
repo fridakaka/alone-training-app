@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { suggestTarget, KINDS, HARD } from '../../src/suggestion.js';
-import { explanationKey, longestGoodSession } from '../../src/explain.js';
+import { suggestTarget, KINDS, HARD, SUGGESTION_SETTINGS } from '../../src/suggestion.js';
+import { explanationKey, longestGoodSession, shownUnderTime } from '../../src/explain.js';
 import { t, STRINGS } from '../../src/i18n.js';
 
 const NOW = new Date(2026, 9, 15, 18).getTime();
@@ -112,7 +112,8 @@ test('the historical record never raises today\'s suggestion or becomes a hidden
   for (const extra of [[old], [inWindow], [old, inWindow]]) {
     const all = [...extra, ...recent];
     const after = suggestTarget(all, { now: NOW });
-    assert.equal(after.sec, before.sec);
+    // (Compare the regular time: the extra sessions may make this an easy session.)
+    assert.equal(after.regularSec ?? after.sec, before.sec);
     assert.equal(longestGoodSession(all).durationSec, 7200); // shown as history only
     assert.ok(after.sec < 7200);
   }
@@ -124,4 +125,25 @@ test('the historical record never raises today\'s suggestion or becomes a hidden
   assert.equal(sug.repeatSec, null);
   assert.equal(longestGoodSession(brk).durationSec, 7200);
   assert.equal(t('targetNoAuto', {}, 'sv'), 'Inget automatiskt mål i dag');
+});
+
+test('an easy session is explained: half the level, why, the next regular time – never "shorter"', () => {
+  const sessions = [s(4, 600, 'good', { targetSec: 600 }), s(3, 600, 'good', { targetSec: 600 }), s(2, 600, 'good', { targetSec: 600 })];
+  const always = { ...SUGGESTION_SETTINGS, EASY_EVERY_MIN: 1, EASY_EVERY_MAX: 1 };
+  const sug = suggestTarget(sessions, { now: NOW, settings: always });
+  assert.equal(sug.kind, KINDS.EASY);
+  assert.equal(sug.sec, 300);
+  assert.equal(shownUnderTime(sug), true);
+  const { key, params } = explanationKey(sug);
+  assert.equal(t(key, { dog: 'Charlie', ...params }, 'sv'),
+    'Lätt pass: halva den vanliga nivån. Vart 3:e–5:e pass är lättare, så att Charlie inte lär sig att det alltid blir längre. Det sänker ingenting – nästa vanliga pass 11:00. Du kan alltid låta det bli längre.');
+  // After the easy session went well: the regular suggestion, without "it was shorter".
+  const after = suggestTarget([...sessions, s(1, 300, 'good', { targetSec: 300, easy: true })], { now: NOW });
+  // … exactly as if it hadn't happened (same time, same note – no "it was shorter").
+  const off = { ...SUGGESTION_SETTINGS, EASY_SESSIONS: false };
+  const without = suggestTarget(sessions, { now: NOW, settings: off });
+  const afterBase = suggestTarget([...sessions, s(1, 300, 'good', { targetSec: 300, easy: true })], { now: NOW, settings: off });
+  assert.equal(afterBase.sec, sug.regularSec);
+  assert.equal(afterBase.note, without.note);
+  assert.equal(after.regularSec ?? after.sec, sug.regularSec);
 });
