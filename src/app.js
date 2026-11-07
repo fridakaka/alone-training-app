@@ -630,15 +630,24 @@ function clearOnsetInputs() {
   $('onset-min').value = '';
   $('onset-sec').value = '';
   $('onset-error').textContent = '';
+  $('onset-unknown').checked = false;
+  $('onset-min').disabled = $('onset-sec').disabled = false;
 }
 
-$('onset-unknown').addEventListener('click', () => {
-  savedFor = null;
-  render();
+// "Don't know" (a checkbox, v0.19): empties and locks the time fields; Save then saves without a time.
+$('onset-unknown').addEventListener('change', () => {
+  const unknown = $('onset-unknown').checked;
+  if (unknown) $('onset-min').value = $('onset-sec').value = '';
+  $('onset-min').disabled = $('onset-sec').disabled = unknown;
+  $('onset-error').textContent = '';
 });
 
 $('onset-save').addEventListener('click', () => {
   const session = state.sessions.find((x) => x.id === savedFor);
+  if ($('onset-unknown').checked) {
+    savedFor = null; // saved without a worry time
+    return render();
+  }
   const input = readMinSec('onset-min', 'onset-sec');
   if (input.error) return void ($('onset-error').textContent = input.error);
   if (!session || input.empty) {

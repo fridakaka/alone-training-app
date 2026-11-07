@@ -167,7 +167,7 @@ try {
     // Already saved before answering.
     assert.equal(await page.locator('#history li').count(), 2);
     await page.screenshot({ path: OUT + '12-worry-question.png', fullPage: true });
-    await page.tap('#onset-unknown');
+    await page.check('#onset-unknown'); await page.tap('#onset-save');
     assert.ok(await page.isVisible('#start-btn'));
     assert.match(await page.textContent('#history li:first-child'), /40 s[\s\S]*Didn't go well/);
     assert.doesNotMatch(await page.textContent('#history li:first-child'), /worried/);
@@ -239,7 +239,7 @@ try {
     await page.tap(result === 'good' ? '#good-btn' : '#bad-btn');
     if (result === 'good') await page.tap('#saved-done');
     else {
-      if (onset == null) await page.tap('#onset-unknown');
+      if (onset == null) { await page.check('#onset-unknown'); await page.tap('#onset-save'); }
       else {
         await page.fill('#onset-min', String(Math.floor(onset / 60)));
         await page.fill('#onset-sec', String(onset % 60));
@@ -1574,7 +1574,7 @@ try {
     await p.tap('#bad-btn');
     assert.equal(await p.inputValue('#saved-comment'), ''); // a new session starts empty
     await p.fill('#saved-comment', 'Skällde vid dörren.');
-    await p.tap('#onset-unknown');
+    await p.check('#onset-unknown'); await p.tap('#onset-save');
     s = await stored();
     assert.equal(s.sessions.at(-1).result, 'bad');
     assert.equal(s.sessions.at(-1).comment, 'Skällde vid dörren.');
@@ -1940,7 +1940,7 @@ try {
     assert.equal(await p.getAttribute('#saved-comment', 'placeholder'), 'Vad hände? T.ex. ”Ett bud ringde på dörren” eller ”Jag fick avbryta passet”');
     await p.fill('#saved-comment', 'Robotdammsugaren körde utanför');
     await p.screenshot({ path: OUT + '35-special-sv.png' });
-    await p.tap('#onset-unknown');
+    await p.check('#onset-unknown'); await p.tap('#onset-save');
     const last = await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.at(-1));
     assert.equal(last.result, 'bad');
     assert.equal(last.uncertain, true);
@@ -2119,10 +2119,29 @@ try {
     await p.tap('#bad-btn');
     const y = async (sel) => { const b = await p.locator(sel).boundingBox(); return b.y + b.height / 2; };
     assert.ok(Math.abs((await y('#onset-unknown')) - (await y('#onset-min'))) < 10); // same row
+    // A checkbox: ticking it empties and locks the time fields; unticking unlocks them.
+    await p.fill('#onset-min', '2');
+    await p.check('#onset-unknown');
+    assert.equal(await p.inputValue('#onset-min'), '');
+    assert.equal(await p.isDisabled('#onset-min'), true);
+    assert.equal(await p.isDisabled('#onset-sec'), true);
+    await p.uncheck('#onset-unknown');
+    assert.equal(await p.isDisabled('#onset-min'), false);
+    await p.check('#onset-unknown');
     assert.equal(await p.locator('#view-onset textarea').count(), 1);
     assert.match(await p.textContent('#view-onset .special-field'), /ovanlig störning, eller passet avbröts/);
     assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await p.screenshot({ path: OUT + '41-onset-sv.png' });
+    await p.tap('#onset-save'); // saved without a worry time
+    const last = await p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.at(-1));
+    assert.equal(last.anxietyOnsetSec ?? null, null);
+    assert.ok(await p.isVisible('#start-btn'));
+    // The next session starts with the box unticked and the fields open.
+    await p.tap('#start-btn');
+    await p.tap('#end-btn');
+    await p.tap('#bad-btn');
+    assert.equal(await p.isChecked('#onset-unknown'), false);
+    assert.equal(await p.isDisabled('#onset-min'), false);
     await c.close();
   });
 
@@ -2188,7 +2207,7 @@ try {
     await p.tap('#unsure-btn');
     await p.tap('#unsettled-btn');
     assert.equal(await t('#onset-question'), 'Ungefär när började Charlie bli orolig?');
-    await p.tap('#onset-unknown');
+    await p.check('#onset-unknown'); await p.tap('#onset-save');
     last = (await stored()).sessions.at(-1);
     assert.equal(last.result, 'bad');
     assert.equal(last.returnCheck, 'unsettled');

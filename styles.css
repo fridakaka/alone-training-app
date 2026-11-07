@@ -98,7 +98,8 @@ h2 { font-size: 17px; }
 .unsure-block .choices { text-align: initial; }
 /* "Don't know" sits right next to the worry-time fields (v0.18). */
 .onset-row { align-items: center; flex-wrap: wrap; }
-.onset-row .onset-unknown { min-height: 48px; padding: 0 16px; font-size: 16px; width: auto; }
+.onset-row .onset-unknown { min-height: 48px; align-items: center; color: var(--ink); }
+.time-inputs input:disabled { opacity: .45; }
 
 /* ---------- buttons ---------- */
 .btn {
