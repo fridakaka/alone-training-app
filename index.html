@@ -33,6 +33,12 @@
       </button>
       <!-- The menu opens separate pages; the main screen keeps only what you need to train. -->
       <nav id="menu" class="menu" data-i18n-aria="menuAria" aria-label="Menu" hidden>
+        <!-- Up to three dogs (v0.18): switch here. Not while a session runs. -->
+        <div class="menu-dogs" role="group" aria-labelledby="menu-dogs-title">
+          <p id="menu-dogs-title" class="menu-dogs-title" data-i18n="dogsTitle">Dog</p>
+          <div id="menu-dog-list" class="menu-dog-list"><!-- filled by app.js --></div>
+          <p id="menu-dogs-busy" class="menu-dogs-busy" data-i18n="dogsBusy" hidden>Finish the session to switch dog.</p>
+        </div>
         <button type="button" class="menu-item" data-nav="home" data-i18n="navHome">Main screen</button>
         <button type="button" class="menu-item menu-start" data-nav="start" data-i18n="startMenu">Untrained dog? Start here</button>
         <button type="button" class="menu-item" data-nav="history" data-i18n="historyTitle">Previous sessions</button>
@@ -116,14 +122,9 @@
         <button id="end-btn" class="btn btn-dark btn-huge" type="button" data-i18n="end">End training</button>
       </section>
 
-      <!-- State 3: result. The optional comment comes first (write what you saw, then rate);
-           it is saved together with the result. -->
+      <!-- State 3: result. Rate first; the comment comes on the next screen (once). -->
       <section id="view-result" class="panel" hidden>
         <p class="label"><span data-i18n="resultFinished">Session finished</span> · <strong id="result-duration"></strong><span id="result-target"></span></p>
-        <label class="comment-field">
-          <span class="comment-label"><span data-i18n="commentLabel">Comment</span> <span class="muted" data-i18n="commentOptional">(optional)</span></span>
-          <textarea id="result-comment" rows="3" maxlength="500" data-i18n-placeholder="commentPlaceholder"></textarea>
-        </label>
         <h2 class="question" data-i18n="resultQuestion">How did it go?</h2>
         <div class="choices">
           <button id="good-btn" class="btn btn-good" type="button" data-i18n="good">Went well</button>
@@ -139,9 +140,10 @@
         <div id="onset-block" class="onset-block">
           <h2 id="onset-question" class="question">Roughly when did Charlie start to get worried?</h2>
           <p class="label small" data-i18n="onsetHint">Optional. Minutes and seconds from the start.</p>
-          <div class="time-inputs center">
+          <div class="time-inputs center onset-row">
             <label><input id="onset-min" type="number" inputmode="numeric" min="0" max="999" data-i18n-aria="minutesAria" aria-label="Minutes"> <span data-i18n="unitMin">min</span></label>
             <label><input id="onset-sec" type="number" inputmode="numeric" min="0" max="59" data-i18n-aria="secondsAria" aria-label="Seconds"> <span data-i18n="unitSec">s</span></label>
+            <button id="onset-unknown" class="btn btn-quiet onset-unknown" type="button" data-i18n="onsetUnknown">Don't know</button>
           </div>
           <p id="onset-error" class="form-error" role="alert"></p>
         </div>
@@ -155,8 +157,7 @@
           <span class="hint" data-i18n="savedCommentHint"></span>
         </label>
         <button id="saved-done" class="btn btn-primary" type="button" data-i18n="done" hidden>Done</button>
-        <div id="onset-actions" class="choices">
-          <button id="onset-unknown" class="btn btn-quiet" type="button" data-i18n="onsetUnknown">Don't know</button>
+        <div id="onset-actions" class="choices one">
           <button id="onset-save" class="btn btn-primary" type="button" data-i18n="save">Save</button>
         </div>
       </section>
@@ -229,10 +230,11 @@
         <h2 id="settings-title" class="page-title" tabindex="-1" data-i18n="settingsTitle">Settings</h2>
         <p class="hint" data-i18n="settingsHint">Change your dog's name, the language and the three place names.</p>
         <form id="settings-form" novalidate>
-          <label class="place-field">
-            <span class="place-field-label" data-i18n="dogNameLabel">Dog's name</span>
-            <input id="settings-dog" type="text" autocomplete="off" spellcheck="false" enterkeyhint="done">
-          </label>
+          <fieldset class="settings-dogs">
+            <legend class="place-field-label" data-i18n="dogsLabel">Dogs</legend>
+            <div id="dog-fields" class="place-fields"><!-- filled by app.js: one name per dog --></div>
+            <button id="settings-add-dog" type="button" class="btn-link" data-i18n="addDog">+ Add dog</button>
+          </fieldset>
           <fieldset class="settings-lang">
             <legend class="place-field-label" data-i18n="languageLabel">Language</legend>
             <label class="radio"><input type="radio" name="settings-lang" value="sv"> Svenska</label>
@@ -373,6 +375,34 @@
   </dialog>
 
   <!-- Delete all data: only after ticking that you understand. -->
+  <dialog id="dog-dialog" class="sheet" aria-labelledby="dog-dialog-title">
+    <form id="dog-form" method="dialog" novalidate>
+      <h2 id="dog-dialog-title" data-i18n="addDogTitle">Add dog</h2>
+      <p class="hint" data-i18n="addDogHint">Each dog has its own history and suggestions. The places are shared.</p>
+      <label class="place-field">
+        <span class="place-field-label" data-i18n="dogNameLabel">Dog's name</span>
+        <input id="new-dog-name" type="text" autocomplete="off" spellcheck="false" enterkeyhint="done">
+      </label>
+      <p id="dog-error" class="form-error" role="alert"></p>
+      <div class="sheet-actions">
+        <button id="dog-cancel" type="button" class="btn btn-quiet" data-i18n="cancel">Cancel</button>
+        <button id="dog-add" type="submit" class="btn btn-primary" data-i18n="addDogConfirm">Add</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="remove-dog-dialog" class="sheet" aria-labelledby="remove-dog-title">
+    <form id="remove-dog-form" method="dialog">
+      <h2 id="remove-dog-title"></h2>
+      <p id="remove-dog-text"></p>
+      <p class="hint" data-i18n="resetBackupHint">Save a backup first if you may want the history back.</p>
+      <div class="sheet-actions">
+        <button id="remove-dog-cancel" type="button" class="btn btn-quiet" data-i18n="cancel">Cancel</button>
+        <button id="remove-dog-confirm" type="submit" class="btn btn-danger-strong" data-i18n="removeDogConfirm">Remove</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="reset-dialog" class="sheet" aria-labelledby="reset-title">
     <form id="reset-form" method="dialog">
       <h2 id="reset-title" data-i18n="resetConfirmTitle">Delete all data?</h2>

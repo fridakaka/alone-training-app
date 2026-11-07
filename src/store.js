@@ -6,7 +6,7 @@
 // deleted, so the original data always stays on the phone as a backup.
 
 import {
-  createInitialState, DEFAULT_CONTEXTS, SCHEMA_VERSION, cleanContextName, MAX_CONTEXT_NAME, MAX_DOG_NAME,
+  createInitialState, DEFAULT_CONTEXTS, SCHEMA_VERSION, cleanContextName, MAX_CONTEXT_NAME, MAX_DOG_NAME, MAX_DOGS,
   cleanPrepDone,
 } from './training.js';
 import { LANGS } from './i18n.js';
@@ -85,21 +85,35 @@ function normalizeV2(data) {
     const name = typeof raw === 'string' ? cleanContextName(raw) : '';
     return { ...c, name: name && [...name].length <= MAX_CONTEXT_NAME ? name : c.name };
   });
-  // One dog. Keep its id; fall back to the default name only if the stored one is unusable.
-  const savedDog = Array.isArray(data.dogs) && data.dogs[0] ? data.dogs[0] : fresh.dogs[0];
-  const dogName = typeof savedDog.name === 'string' ? cleanContextName(savedDog.name) : '';
-  const dogs = [{ ...savedDog, id: savedDog.id || 'charlie', name: dogName && [...dogName].length <= MAX_DOG_NAME ? dogName : fresh.dogs[0].name }];
+  // Up to MAX_DOGS dogs (one before v0.18). Ids are kept; an unusable name of the first dog falls
+  // back to the default ("Charlie"), a later dog's to "Charlie 2/3". Never more than MAX_DOGS.
+  const savedDogs = (Array.isArray(data.dogs) ? data.dogs : []).filter((d) => d && typeof d === 'object');
+  const dogs = [];
+  for (const [i, d] of (savedDogs.length ? savedDogs : fresh.dogs).entries()) {
+    if (dogs.length >= MAX_DOGS) break;
+    const id = d.id || (i === 0 ? 'charlie' : null);
+    if (!id || dogs.some((x) => x.id === id)) continue;
+    const name = typeof d.name === 'string' ? cleanContextName(d.name) : '';
+    const ok = name && [...name].length <= MAX_DOG_NAME;
+    // "Start here" ticks were one list for the app before v0.18: they belong to the first dog.
+    const prep = Array.isArray(d.prepDone) ? d.prepDone : i === 0 ? data.prepDone : [];
+    dogs.push({ ...d, id, name: ok ? name : i === 0 ? fresh.dogs[0].name : `${fresh.dogs[0].name} ${i + 1}`, prepDone: cleanPrepDone(prep) });
+  }
+  const { prepDone: _oldPrep, ...rest } = data;
   const state = {
     ...fresh,
-    ...data,
+    ...rest,
     schemaVersion: SCHEMA_VERSION,
     contexts,
     dogs,
     // Data saved before these fields existed belongs to an existing user.
     onboarded: data.onboarded === false ? false : true,
     lang: LANGS.includes(data.lang) ? data.lang : null,
-    prepDone: cleanPrepDone(data.prepDone),
   };
+  if (!dogs.some((d) => d.id === state.selectedDogId)) state.selectedDogId = dogs[0].id;
+  // A running or unrated session always belongs to the dog shown.
+  const busy = state.active?.dogId ?? state.pending?.dogId;
+  if (busy && dogs.some((d) => d.id === busy)) state.selectedDogId = busy;
   if (!contexts.some((c) => c.id === state.selectedContextId)) state.selectedContextId = 'home';
   return state;
 }

@@ -380,3 +380,63 @@ test('a planned easy session is marked from start to the saved session (only wit
   assert.equal('easy' in startSession(createInitialState(), { ...where, targetSec: 300, now: 0 }).active, false);
   assert.equal('easy' in startSession(createInitialState(), { ...where, easy: true, now: 0 }).active, false);
 });
+
+// ---------- v0.18: up to three dogs ----------
+import {
+  addDog, selectDog, removeDog, renameDogs, validateDogNames, validateNewDog, currentDog, MAX_DOGS, setPrepDone, clearPrepDone,
+} from '../../src/training.js';
+
+test('dogs: add up to three, each new dog is shown; names must be unique', () => {
+  let s = createInitialState();
+  assert.equal(currentDog(s).id, 'charlie');
+  s = addDog(s, ' Majken ', { id: 'd2' });
+  assert.deepEqual(s.dogs.map((d) => d.name), ['Charlie', 'Majken']);
+  assert.equal(currentDog(s).id, 'd2');
+  assert.equal(validateNewDog(s, 'majken'), 'duplicate');
+  assert.equal(addDog(s, 'MAJKEN', { id: 'x' }), s);
+  s = addDog(s, 'Sixten', { id: 'd3' });
+  assert.equal(s.dogs.length, MAX_DOGS);
+  assert.equal(validateNewDog(s, 'Fjärde'), 'full');
+  assert.equal(addDog(s, 'Fjärde', { id: 'd4' }), s);
+  assert.equal(validateNewDog(createInitialState(), ''), 'empty');
+});
+
+test('dogs: each has its own sessions; no switching while a session runs or waits for its result', () => {
+  let s = addDog(createInitialState(), 'Majken', { id: 'd2' });
+  s = startSession(s, { dogId: currentDog(s).id, contextId: 'home', now: 0 });
+  assert.equal(selectDog(s, 'charlie'), s); // running
+  s = endSession(s, 60_000);
+  assert.equal(selectDog(s, 'charlie'), s); // not rated yet
+  s = recordResult(s, RESULTS.GOOD);
+  s = selectDog(s, 'charlie');
+  assert.equal(currentDog(s).id, 'charlie');
+  assert.equal(sessionsFor(s, { dogId: 'charlie', contextId: 'home' }).length, 0);
+  assert.equal(sessionsFor(s, { dogId: 'd2', contextId: 'home' }).length, 1);
+  // A running session's dog is the dog shown, whatever was selected.
+  s = startSession(s, { dogId: 'd2', contextId: 'home', now: 1e6 });
+  assert.equal(currentDog(s).id, 'd2');
+});
+
+test('dogs: removing deletes only that dog and its sessions; never the last dog or a busy one', () => {
+  let s = addDog(createInitialState(), 'Majken', { id: 'd2' });
+  s = recordResult(endSession(startSession(s, { dogId: 'd2', contextId: 'home', now: 0 }), 5000), RESULTS.GOOD);
+  s = recordResult(endSession(startSession(selectDog(s, 'charlie'), { dogId: 'charlie', contextId: 'car', now: 9e6 }), 9e6 + 5000), RESULTS.GOOD);
+  const busy = startSession(selectDog(s, 'd2'), { dogId: 'd2', contextId: 'home', now: 2e7 });
+  assert.equal(removeDog(busy, 'd2'), busy);
+  s = removeDog(selectDog(s, 'd2'), 'd2');
+  assert.deepEqual(s.dogs.map((d) => d.id), ['charlie']);
+  assert.deepEqual(s.sessions.map((x) => x.dogId), ['charlie']);
+  assert.equal(currentDog(s).id, 'charlie');
+  assert.equal(removeDog(s, 'charlie'), s); // the last dog stays
+});
+
+test('dogs: renaming several at once; "Start here" ticks per dog', () => {
+  let s = addDog(createInitialState(), 'Majken', { id: 'd2' });
+  assert.equal(validateDogNames(s, { charlie: 'Majken', d2: 'Majken' }), 'duplicate');
+  s = renameDogs(s, { charlie: 'Charlie B', d2: 'Majken' });
+  assert.deepEqual(s.dogs.map((d) => d.name), ['Charlie B', 'Majken']);
+  s = setPrepDone(s, 'prepStep2', true); // the dog shown: Majken
+  assert.deepEqual(s.dogs.map((d) => d.prepDone), [[], ['prepStep2']]);
+  s = setPrepDone(s, 'prepStep1', true, 'charlie');
+  assert.deepEqual(clearPrepDone(s).dogs.map((d) => d.prepDone), [['prepStep1'], []]);
+});

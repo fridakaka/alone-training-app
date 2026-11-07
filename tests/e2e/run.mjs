@@ -508,7 +508,7 @@ try {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.tap('#csv-btn')]);
     const csv = await readFile(await dl.path(), 'utf8');
     const lines = csv.trim().split('\r\n');
-    assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Easy session;Place ID;Comment');
+    assert.equal(lines[1], 'Date;Time;Dog;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Easy session;Place ID;Comment');
     assert.match(csv, /;Didn't go well;20;0:20;;;(car|outside-shop)/);
     const total = await page.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length);
     assert.equal(lines.length - 2, total);
@@ -995,20 +995,15 @@ try {
     await p.tap('#saved-done');
     assert.equal(await p.locator('#history .note').count(), 0);
 
-    // Session 2: comment, survives a reload on the result screen, saved with the result.
+    // Session 2: rate first; the comment box comes once, on the next screen (v0.18).
     await p.clock.fastForward(24 * 3_600_000);
     await p.tap('#start-btn');
     await p.clock.runFor(60_000);
     await p.tap('#end-btn');
-    // The comment box comes BEFORE the two result buttons: write first, then rate.
-    const box = async (sel) => (await p.locator(sel).boundingBox()).y;
-    assert.ok((await box('#result-comment')) < (await box('#good-btn')));
-    assert.ok((await box('#result-comment')) < (await box('#bad-btn')));
-    await p.fill('#result-comment', 'Grannhunden skällde.\nHan lade sig efter en stund.');
-    await p.reload();
-    assert.equal(await p.inputValue('#result-comment'), 'Grannhunden skällde.\nHan lade sig efter en stund.');
-    await p.screenshot({ path: OUT + '19-sv-result-comment.png', fullPage: true });
+    assert.equal(await p.locator('#view-result textarea').count(), 0); // no comment box before rating
     await p.tap('#good-btn');
+    await p.fill('#saved-comment', 'Grannhunden skällde.\nHan lade sig efter en stund.');
+    await p.screenshot({ path: OUT + '19-sv-result-comment.png', fullPage: true });
     await p.tap('#saved-done');
     assert.match(await t('#history li:first-child .note'), /Grannhunden skällde\.\s+Han lade sig efter en stund\./);
 
@@ -1017,8 +1012,8 @@ try {
     await p.tap('#start-btn');
     await p.clock.runFor(90_000);
     await p.tap('#end-btn');
-    await p.fill('#result-comment', '=Jag glömde stoppa timern');
     await p.tap('#bad-btn');
+    await p.fill('#saved-comment', '=Jag glömde stoppa timern');
     assert.equal(await t('#onset-question'), 'Ungefär när började Majken bli orolig?');
     await p.fill('#onset-sec', '99');
     await p.tap('#onset-save');
@@ -1121,14 +1116,14 @@ try {
 
     // Settings: validation, then rename the dog.
     await open(p, 'settings');
-    assert.equal(await p.inputValue('#settings-dog'), 'Charlie');
-    await p.fill('#settings-dog', '   ');
+    assert.equal(await p.inputValue('#dog-name-charlie'), 'Charlie');
+    await p.fill('#dog-name-charlie', '   ');
     await p.tap('#settings-save');
     assert.equal(await t('#settings-error'), 'Skriv hundens namn.');
-    await p.fill('#settings-dog', 'Ö'.repeat(31));
+    await p.fill('#dog-name-charlie', 'Ö'.repeat(31));
     await p.tap('#settings-save');
     assert.equal(await t('#settings-error'), 'Hundens namn får vara högst 30 tecken.');
-    await p.fill('#settings-dog', '  Sixten ');
+    await p.fill('#dog-name-charlie', '  Sixten ');
     await p.fill('#place-name-home', ' home ');
     await p.fill('#place-name-car', 'Home');
     await p.tap('#settings-save');
@@ -1151,7 +1146,7 @@ try {
     await p.tap('#start-btn');
     await p.clock.runFor(30_000);
     await open(p, 'settings');
-    await p.fill('#settings-dog', 'Sixten den store');
+    await p.fill('#dog-name-charlie', 'Sixten den store');
     await p.tap('#settings-save');
     await p.clock.runFor(15_000);
     assert.equal(await t('#live-bar-text'), 'Sixten den store ensam · 00:45');
@@ -1191,8 +1186,8 @@ try {
     const t = (sel) => p.textContent(sel).then((x) => x.trim());
     await p.tap('#start-btn');
     await p.tap('#end-btn');
-    await p.fill('#result-comment', 'Lugn hela tiden');
     await p.tap('#good-btn');
+    await p.fill('#saved-comment', 'Lugn hela tiden');
     await p.tap('#saved-done');
     await open(p, 'data');
     const [dl] = await Promise.all([p.waitForEvent('download'), p.tap('#backup-btn')]);
@@ -1242,8 +1237,8 @@ try {
     await gotoApp(p, { lang: 'sv', dog: 'Majken' });
     await p.tap('#start-btn');
     await p.tap('#end-btn');
-    await p.fill('#result-comment', 'Han lade sig efter en stund. Grannhunden skällde två gånger men sedan var det lugnt resten av passet.');
     await p.tap('#good-btn');
+    await p.fill('#saved-comment', 'Han lade sig efter en stund. Grannhunden skällde två gånger men sedan var det lugnt resten av passet.');
     await p.tap('#saved-done');
     await p.screenshot({ path: OUT + '23-dark-sv-home.png', fullPage: true });
     await open(p, 'help');
@@ -1518,7 +1513,7 @@ try {
     // Reopening the app on the settings page shows the saved values.
     await open(p, 'settings');
     await p.reload();
-    assert.equal(await p.inputValue('#settings-dog'), 'Charlie');
+    assert.equal(await p.inputValue('#dog-name-charlie'), 'Charlie');
     assert.equal(await p.inputValue('#place-name-car'), 'Car');
     await p.locator('#page-settings .back-btn').tap();
     // The phone's own back gesture/button returns to the main screen.
@@ -1561,13 +1556,10 @@ try {
     assert.equal(await t('#live-bar-text'), 'Passet är avslutat – inte bedömt än');
     await p.tap('#live-bar');
     assert.ok(await p.isVisible('#view-result'));
-    // Write the observation first, then choose the result.
-    await p.fill('#result-comment', 'Pep lite i början, lade sig sedan.');
-    await p.screenshot({ path: OUT + '27-result-comment-first-sv.png' });
-    await open(p, 'data'); // the typed comment survives a detour
-    await home(p);
-    assert.equal(await p.inputValue('#result-comment'), 'Pep lite i början, lade sig sedan.');
+    // Rate first, then write the observation (saved as you type).
     await p.tap('#good-btn');
+    await p.fill('#saved-comment', 'Pep lite i början, lade sig sedan.');
+    await p.screenshot({ path: OUT + '27-result-comment-first-sv.png' });
     await p.tap('#saved-done');
     let s = await stored();
     assert.equal(s.sessions.at(-1).result, 'good');
@@ -1579,9 +1571,9 @@ try {
     await p.tap('#start-btn');
     await p.clock.runFor(30_000);
     await p.tap('#end-btn');
-    assert.equal(await p.inputValue('#result-comment'), ''); // a new session starts empty
-    await p.fill('#result-comment', 'Skällde vid dörren.');
     await p.tap('#bad-btn');
+    assert.equal(await p.inputValue('#saved-comment'), ''); // a new session starts empty
+    await p.fill('#saved-comment', 'Skällde vid dörren.');
     await p.tap('#onset-unknown');
     s = await stored();
     assert.equal(s.sessions.at(-1).result, 'bad');
@@ -1592,12 +1584,10 @@ try {
     await p.tap('#start-btn');
     await p.clock.runFor(5_000);
     await p.tap('#end-btn');
-    await p.fill('#result-comment', 'Fel start');
     await p.tap('#discard-btn');
     s = await stored();
     assert.equal(s.sessions.length, 2);
     assert.equal(s.pending, null);
-    assert.ok(!JSON.stringify(s).includes('Fel start'));
 
     // The comment can still be edited later, from Previous sessions.
     await open(p, 'history');
@@ -1705,7 +1695,7 @@ try {
     await p.screenshot({ path: OUT + '29-start-here-sv.png', fullPage: true });
     // Saved – but nothing else changes: no session, no chart, no suggestion.
     let s = await stored();
-    assert.deepEqual(s.prepDone, ['prepStep1', 'prepStep3']);
+    assert.deepEqual(s.dogs[0].prepDone, ['prepStep1', 'prepStep3']);
     assert.equal(s.sessions.length, 0);
     await home(p);
     assert.equal(await p.locator('.chart .bar').count(), 0);
@@ -1725,14 +1715,14 @@ try {
     watch(p2);
     await gotoApp(p2);
     await importFile(p2, path);
-    assert.deepEqual(await p2.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).prepDone), ['prepStep1', 'prepStep3']);
+    assert.deepEqual(await p2.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).dogs[0].prepDone), ['prepStep1', 'prepStep3']);
     await c2.close();
     // Untick and remove all.
     await open(p, 'start');
     await p.locator('#prep-list input').first().uncheck();
-    assert.deepEqual((await stored()).prepDone, ['prepStep3']);
+    assert.deepEqual((await stored()).dogs[0].prepDone, ['prepStep3']);
     await p.tap('#prep-reset');
-    assert.deepEqual((await stored()).prepDone, []);
+    assert.deepEqual((await stored()).dogs[0].prepDone, []);
     // Once training has started, the hint on the main screen goes away; the page stays in the menu.
     await home(p);
     await p.tap('#start-btn');
@@ -1901,7 +1891,7 @@ try {
     assert.equal(s.sessions.length, 0);
     assert.equal(s.active, null);
     assert.equal(s.onboarded, false);
-    assert.deepEqual(s.prepDone, []);
+    assert.deepEqual(s.dogs[0].prepDone, []);
     assert.equal(s.dogs[0].name, 'Charlie');
     assert.deepEqual(await p.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('alone-training:'))), ['alone-training:v2']);
     // The iOS app's own storage is overwritten too, and the Live Activity has ended.
@@ -1947,7 +1937,7 @@ try {
     assert.equal(await p.getAttribute('#saved-comment', 'placeholder'), 'T.ex. ”Han lade sig efter en stund”');
     await p.check('#saved-special');
     // The comment box suggests saying what happened.
-    assert.equal(await p.getAttribute('#saved-comment', 'placeholder'), 'Vad hände? T.ex. ”Robotdammsugaren körde utanför dörren”');
+    assert.equal(await p.getAttribute('#saved-comment', 'placeholder'), 'Vad hände? T.ex. ”Ett bud ringde på dörren” eller ”Jag fick avbryta passet”');
     await p.fill('#saved-comment', 'Robotdammsugaren körde utanför');
     await p.screenshot({ path: OUT + '35-special-sv.png' });
     await p.tap('#onset-unknown');
@@ -2050,6 +2040,89 @@ try {
     // The help page explains it.
     await open(p, 'help');
     assert.match(await p.textContent('#help-calc'), /Lätta pass: vart 3:e–5:e pass \(slumpvis\) är halva den typiska nivån/);
+    await c.close();
+  });
+
+  await step('up to three dogs: add and switch in the menu, own history each, no switching mid-session, remove', async () => {
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const p = await c.newPage();
+    watch(p);
+    await gotoApp(p, { lang: 'sv', dog: 'Charlie' });
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    const stored = () => p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')));
+    // One session for Charlie.
+    await p.tap('#start-btn');
+    await p.tap('#end-btn');
+    await p.tap('#good-btn');
+    await p.tap('#saved-done');
+
+    // The menu shows the dog and "+ Lägg till hund".
+    await p.tap('#menu-btn');
+    assert.deepEqual(await p.locator('#menu-dog-list button').allTextContents(), ['Charlie', '+ Lägg till hund']);
+    await p.tap('#add-dog-btn');
+    assert.ok(await p.evaluate(() => document.getElementById('dog-dialog').open));
+    await p.fill('#new-dog-name', 'charlie');
+    await p.tap('#dog-add');
+    assert.equal(await t('#dog-error'), 'Två hundar kan inte ha samma namn.');
+    await p.fill('#new-dog-name', 'Majken');
+    await p.tap('#dog-add');
+    // The new dog is shown, with an empty history and the "Start here" link.
+    assert.equal(await t('#dog-name'), 'Majken');
+    assert.ok(await p.isVisible('#empty'));
+    assert.ok(await p.isVisible('#prep-link'));
+
+    // A session for Majken; while it runs the other dog can't be chosen.
+    await p.tap('#start-btn');
+    await p.tap('#menu-btn');
+    assert.equal(await p.isDisabled('#menu-dog-list [data-dog="charlie"]'), true);
+    assert.equal(await t('#menu-dogs-busy'), 'Avsluta passet för att byta hund.');
+    await p.screenshot({ path: OUT + '39-dogs-menu-sv.png' });
+    await p.tap('#menu-btn');
+    await p.tap('#end-btn');
+    await p.tap('#good-btn');
+    await p.tap('#saved-done');
+
+    // Switch back: Charlie's own history (1 session), Majken's own (1 session).
+    await p.tap('#menu-btn');
+    await p.tap('#menu-dog-list [data-dog="charlie"]');
+    assert.equal(await t('#dog-name'), 'Charlie');
+    assert.equal(await t('#history-link'), 'Tidigare pass (1) ›');
+    let s = await stored();
+    assert.deepEqual(s.dogs.map((d) => d.name), ['Charlie', 'Majken']);
+    assert.equal(s.selectedDogId, 'charlie');
+    const majken = s.dogs[1].id;
+    assert.deepEqual(s.sessions.map((x) => x.dogId), ['charlie', majken]);
+
+    // Settings: both names; remove Majken after a confirmation.
+    await open(p, 'settings');
+    assert.equal(await p.inputValue(`#dog-name-${majken}`), 'Majken');
+    await p.tap(`[data-remove-dog="${majken}"]`);
+    assert.equal(await t('#remove-dog-title'), 'Ta bort Majken?');
+    assert.equal(await t('#remove-dog-text'), 'Majken och alla 1 pass med Majken raderas från den här telefonen. Det går inte att ångra.');
+    await p.tap('#remove-dog-confirm');
+    assert.equal(await t('#settings-status'), 'Majken är borttagen.');
+    s = await stored();
+    assert.deepEqual(s.dogs.map((d) => d.name), ['Charlie']);
+    assert.equal(s.sessions.length, 1);
+    await c.close();
+  });
+
+  await step('after "Didn\'t go well": "Don\'t know" sits next to the time fields; one comment box only', async () => {
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const p = await c.newPage();
+    watch(p);
+    await gotoApp(p, { lang: 'sv', dog: 'Charlie' });
+    await p.tap('#start-btn');
+    await p.tap('#end-btn');
+    assert.equal(await p.locator('#view-result textarea').count(), 0);
+    await p.screenshot({ path: OUT + '40-result-sv.png' });
+    await p.tap('#bad-btn');
+    const y = async (sel) => { const b = await p.locator(sel).boundingBox(); return b.y + b.height / 2; };
+    assert.ok(Math.abs((await y('#onset-unknown')) - (await y('#onset-min'))) < 10); // same row
+    assert.equal(await p.locator('#view-onset textarea').count(), 1);
+    assert.match(await p.textContent('#view-onset .special-field'), /ovanlig störning, eller passet avbröts/);
+    assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await p.screenshot({ path: OUT + '41-onset-sv.png' });
     await c.close();
   });
 

@@ -82,9 +82,9 @@ test('Excel export has one row per session, oldest first, semicolon separated', 
   const state = { ...createInitialState(), sessions: [sess('s2', { contextId: 'outside-shop', targetSec: 120, result: 'bad' }), sess('s1')] };
   const lines = buildCsv(state).trim().split('\r\n');
   assert.equal(lines[0], 'sep=;');
-  assert.equal(lines[1], 'Date;Time;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Easy session;Place ID;Comment');
+  assert.equal(lines[1], 'Date;Time;Dog;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Easy session;Place ID;Comment');
   assert.equal(lines.length, 4);
-  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Home;90;1:30;;;Went well;;;;;home;$/);
+  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Charlie;Home;90;1:30;;;Went well;;;;;home;$/);
   assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;;;outside-shop;$/);
   const withNew = { ...state, sessions: [sess('s3', { result: 'bad', anxietyOnsetSec: 45 }), sess('s4', { uncertain: true })] };
   const [, , a, b] = buildCsv(withNew).trim().split('\r\n');
@@ -222,11 +222,11 @@ import { setPrepDone, createInitialState as freshState } from '../../src/trainin
 test('"Start here" ticks are in the backup, read back, and unknown steps are dropped', () => {
   let st = setPrepDone(setPrepDone(freshState(), 'prepStep3', true), 'prepStep1', true);
   st = setPrepDone(st, 'not-a-step', true);
-  assert.deepEqual(st.prepDone, ['prepStep1', 'prepStep3']);
+  assert.deepEqual(st.dogs[0].prepDone, ['prepStep1', 'prepStep3']); // per dog since v0.18
   const parsed = parseBackup(buildBackup(st));
   assert.deepEqual(parsed.prepDone, ['prepStep1', 'prepStep3']);
   assert.deepEqual(parseBackup(JSON.stringify({ sessions: [] })).prepDone, []); // older backups
-  assert.deepEqual(setPrepDone(st, 'prepStep1', false).prepDone, ['prepStep3']);
+  assert.deepEqual(setPrepDone(st, 'prepStep1', false).dogs[0].prepDone, ['prepStep3']);
 });
 
 test('easy sessions survive a backup; the Excel file says which were easy', () => {
@@ -243,4 +243,44 @@ test('easy sessions survive a backup; the Excel file says which were easy', () =
   const rows = buildCsv(state).trim().split('\r\n');
   assert.match(rows[2], /;Went well;;;;Yes;home;$/);
   assert.match(rows[3], /;Went well;;;;;home;$/);
+});
+
+// ---------- v0.18: several dogs ----------
+import { addDog, selectDog } from '../../src/training.js';
+import { importSummary as summary } from '../../src/backup.js';
+
+const dogSess = (id, dogId) => ({ id, dogId, contextId: 'home', startedAt: Date.UTC(2026, 9, 1) + id.length, endedAt: 0, durationSec: 60, targetSec: null, result: 'good' });
+
+test('several dogs: in the backup with their ticks; Excel names the dog of each session', () => {
+  let st = addDog(createInitialState(), 'Majken', { id: 'd2' });
+  st = { ...st, sessions: [dogSess('a', 'charlie'), dogSess('bb', 'd2')] };
+  st = setPrepDone(st, 'prepStep4', true, 'd2');
+  const parsed = parseBackup(buildBackup(st));
+  assert.deepEqual(parsed.dogs, [{ id: 'charlie', name: 'Charlie', prepDone: [] }, { id: 'd2', name: 'Majken', prepDone: ['prepStep4'] }]);
+  const rows = buildCsv(st).trim().split('\r\n');
+  assert.match(rows[2], /^2026-10-01;\d\d:\d\d;Charlie;Home;/);
+  assert.match(rows[3], /^2026-10-01;\d\d:\d\d;Majken;Home;/);
+});
+
+test('several dogs: restoring adds missing dogs (up to 3) with their sessions; a taken name gets a number', () => {
+  let from = addDog(createInitialState(), 'Majken', { id: 'd2' });
+  from = addDog(from, 'Sixten', { id: 'd3' });
+  from = { ...from, sessions: [dogSess('a', 'charlie'), dogSess('bb', 'd2'), dogSess('ccc', 'd3')] };
+  const parsed = parseBackup(buildBackup(from));
+
+  // A phone with Charlie and another dog called Majken (other id): Majken from the backup → "Majken 2".
+  let phone = addDog(createInitialState(), 'Majken', { id: 'x' });
+  const sum = summary(phone, parsed);
+  assert.deepEqual(sum.newDogs, ['Majken 2']);
+  assert.deepEqual(sum.noRoomDogs, ['Sixten']); // already 3 after that
+  const { state, added, skipped, dogsAdded } = mergeSessions(phone, parsed.sessions, parsed);
+  assert.deepEqual(state.dogs.map((d) => [d.id, d.name]), [['charlie', 'Charlie'], ['x', 'Majken'], ['d2', 'Majken 2']]);
+  assert.deepEqual(dogsAdded, ['Majken 2']);
+  assert.equal(added, 2);
+  assert.equal(skipped, 1); // Sixten's session: no room
+  assert.deepEqual(state.sessions.map((s) => s.dogId), ['charlie', 'd2']);
+
+  // Oldest backups (no dogs): everything belongs to the first dog.
+  const old = mergeSessions(selectDog(phone, 'x'), [dogSess('zz', undefined)]);
+  assert.equal(old.state.sessions[0].dogId, 'charlie');
 });

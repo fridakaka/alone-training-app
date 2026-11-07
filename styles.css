@@ -90,6 +90,10 @@ h2 { font-size: 17px; }
 
 .question { text-align: center; font-size: 26px; margin: 4px 0 8px; }
 .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.choices.one { grid-template-columns: 1fr; }
+/* "Don't know" sits right next to the worry-time fields (v0.18). */
+.onset-row { align-items: center; flex-wrap: wrap; }
+.onset-row .onset-unknown { min-height: 48px; padding: 0 16px; font-size: 16px; width: auto; }
 
 /* ---------- buttons ---------- */
 .btn {
@@ -525,6 +529,23 @@ h1, .card h2 { overflow-wrap: anywhere; }
   cursor: pointer;
 }
 .menu-item:active { background: var(--bg); }
+/* Dogs at the top of the menu (v0.18). */
+.menu-dogs { padding: 6px 6px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.menu-dogs-title { margin: 0 0 6px; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.menu-dog-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.menu-dog {
+  appearance: none; font: inherit; font-size: 16px; min-height: 40px; padding: 0 14px;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.menu-dog[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); font-weight: 600; }
+.menu-dog.add { border-style: dashed; color: var(--ink-2); }
+.menu-dog:disabled { opacity: .5; }
+.menu-dog:focus-visible { outline: 3px solid var(--good); outline-offset: 2px; }
+.menu-dogs-busy { margin: 6px 0 0; font-size: 14px; color: var(--ink-3); }
+.dog-field { display: flex; gap: 8px; align-items: end; }
+.dog-field .place-field { flex: 1; }
+.dog-field .btn-link { margin-bottom: 12px; white-space: nowrap; }
 .menu-item[aria-current="page"] { font-weight: 600; background: var(--bg); }
 
 .page { display: flex; flex-direction: column; gap: 16px; }

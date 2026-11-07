@@ -14,7 +14,8 @@ export const DEFAULT_CONTEXTS = Object.freeze([
 export function createInitialState() {
   return {
     schemaVersion: SCHEMA_VERSION,
-    dogs: [{ id: 'charlie', name: 'Charlie' }],
+    dogs: [{ id: 'charlie', name: 'Charlie', prepDone: [] }], // up to MAX_DOGS (v0.18)
+    selectedDogId: 'charlie', // the dog shown on the main screen
     contexts: DEFAULT_CONTEXTS.map((c) => ({ ...c })),
     selectedContextId: 'home', // last chosen context, remembered between visits
     lang: null, // 'en' | 'sv'; null = not chosen yet (existing users are shown a small choice)
@@ -22,7 +23,6 @@ export function createInitialState() {
     active: null, // session currently running
     pending: null, // session ended but not yet rated
     lastBackupAt: null, // when a backup file was last saved
-    prepDone: [], // "Start here" steps the user has ticked (never used by sessions or suggestions)
     sessions: [],
   };
 }
@@ -48,11 +48,56 @@ export function validateContextNames(state, names) {
   return null;
 }
 
-// ---------- dog name ----------
-// Still exactly one dog. Its id ('charlie' for existing data) never changes; only the
-// display name does, so sessions (which point to dogId) are never touched.
+// ---------- dogs ----------
+// Up to three dogs (v0.18). Each has a stable id ('charlie' for the first dog of existing data);
+// sessions point to it, so renaming never touches them. Each dog has its own history, its own
+// suggestions and its own "Start here" ticks; the places are shared.
 
 export const MAX_DOG_NAME = 30;
+export const MAX_DOGS = 3;
+
+/** The dog shown on the main screen (a running or unrated session's dog wins). */
+export function currentDog(state) {
+  const id = state.active?.dogId ?? state.pending?.dogId ?? state.selectedDogId;
+  return state.dogs.find((d) => d.id === id) ?? state.dogs[0];
+}
+
+export function dogNameTaken(state, name, exceptId = null) {
+  const key = cleanContextName(name).toLocaleLowerCase('sv');
+  return state.dogs.some((d) => d.id !== exceptId && d.name.toLocaleLowerCase('sv') === key);
+}
+
+// Error code ('empty' | 'tooLong' | 'duplicate' | 'full') or null.
+export function validateNewDog(state, name) {
+  if (state.dogs.length >= MAX_DOGS) return 'full';
+  return validateDogName(name) ?? (dogNameTaken(state, name) ? 'duplicate' : null);
+}
+
+/** Adds a dog and shows it. Unchanged if the name is invalid, taken, or there are already 3. */
+export function addDog(state, name, { id = `dog-${Date.now().toString(36)}` } = {}) {
+  if (validateNewDog(state, name) || state.dogs.some((d) => d.id === id)) return state;
+  const dog = { id, name: cleanContextName(name), prepDone: [] };
+  return selectDog({ ...state, dogs: [...state.dogs, dog] }, id);
+}
+
+/** Switching dog is not possible while a session runs or waits for its result. */
+export function selectDog(state, dogId) {
+  if (state.active || state.pending || !state.dogs.some((d) => d.id === dogId)) return state;
+  return { ...state, selectedDogId: dogId };
+}
+
+/** Removes a dog AND its sessions. Never the last dog, never one with a running/unrated session. */
+export function removeDog(state, dogId) {
+  if (state.dogs.length <= 1 || !state.dogs.some((d) => d.id === dogId)) return state;
+  if (state.active?.dogId === dogId || state.pending?.dogId === dogId) return state;
+  const dogs = state.dogs.filter((d) => d.id !== dogId);
+  return {
+    ...state,
+    dogs,
+    sessions: state.sessions.filter((s) => s.dogId !== dogId),
+    selectedDogId: state.selectedDogId === dogId ? dogs[0].id : state.selectedDogId,
+  };
+}
 
 // Error code ('empty' | 'tooLong') or null.
 export function validateDogName(name) {
@@ -62,9 +107,26 @@ export function validateDogName(name) {
   return null;
 }
 
-export function renameDog(state, name) {
-  if (validateDogName(name)) return state;
-  return { ...state, dogs: state.dogs.map((d, i) => (i === 0 ? { ...d, name: cleanContextName(name) } : d)) };
+/** Renames one dog (default: the first). Unchanged if the name is invalid or another dog has it. */
+export function renameDog(state, name, dogId = state.dogs[0]?.id) {
+  if (validateDogName(name) || dogNameTaken(state, name, dogId)) return state;
+  return { ...state, dogs: state.dogs.map((d) => (d.id === dogId ? { ...d, name: cleanContextName(name) } : d)) };
+}
+
+/** Renames several dogs at once ({ [dogId]: name }). Error code, or null when they can be saved. */
+export function validateDogNames(state, names) {
+  const cleaned = state.dogs.map((d) => cleanContextName(names[d.id] ?? d.name));
+  for (const n of cleaned) {
+    const err = validateDogName(n);
+    if (err) return err;
+  }
+  const keys = cleaned.map((n) => n.toLocaleLowerCase('sv'));
+  return new Set(keys).size === keys.length ? null : 'duplicate';
+}
+
+export function renameDogs(state, names) {
+  if (validateDogNames(state, names)) return state;
+  return { ...state, dogs: state.dogs.map((d) => ({ ...d, name: cleanContextName(names[d.id] ?? d.name) })) };
 }
 
 // ---------- comments ----------
@@ -96,12 +158,23 @@ export function cleanPrepDone(list) {
   return Array.isArray(list) ? PREP_STEPS.filter((k) => list.includes(k)) : [];
 }
 
-export function setPrepDone(state, key, done) {
+// Per dog (v0.18). Default: the dog on the main screen.
+export function setPrepDone(state, key, done, dogId = currentDog(state).id) {
   if (!PREP_STEPS.includes(key)) return state;
-  const set = new Set(cleanPrepDone(state.prepDone));
-  if (done) set.add(key);
-  else set.delete(key);
-  return { ...state, prepDone: PREP_STEPS.filter((k) => set.has(k)) };
+  return {
+    ...state,
+    dogs: state.dogs.map((d) => {
+      if (d.id !== dogId) return d;
+      const set = new Set(cleanPrepDone(d.prepDone));
+      if (done) set.add(key);
+      else set.delete(key);
+      return { ...d, prepDone: PREP_STEPS.filter((k) => set.has(k)) };
+    }),
+  };
+}
+
+export function clearPrepDone(state, dogId = currentDog(state).id) {
+  return { ...state, dogs: state.dogs.map((d) => (d.id === dogId ? { ...d, prepDone: [] } : d)) };
 }
 
 // ---------- first start ----------

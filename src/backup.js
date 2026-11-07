@@ -3,6 +3,7 @@
 
 import {
   RESULTS, DEFAULT_CONTEXTS, cleanContextName, validateContextNames, validateDogName, cleanComment, cleanPrepDone,
+  MAX_DOGS, dogNameTaken,
 } from './training.js';
 import { LANGS } from './i18n.js';
 
@@ -14,11 +15,11 @@ export function buildBackup(state, now = Date.now()) {
       app: BACKUP_APP,
       exportedAt: new Date(now).toISOString(),
       schemaVersion: state.schemaVersion,
-      dogs: state.dogs,
+      dogs: state.dogs, // up to 3 (v0.18), each with its own "Start here" ticks (prepDone)
       lang: state.lang ?? null,
       contexts: state.contexts,
       sessions: state.sessions,
-      prepDone: cleanPrepDone(state.prepDone), // "Start here" ticks (v0.11)
+      prepDone: cleanPrepDone(state.dogs[0]?.prepDone), // the first dog's ticks, for older app versions
     },
     null,
     2,
@@ -59,15 +60,32 @@ export function parseBackup(text) {
     // Added in v0.7. Missing = no comment.
     comment: cleanComment(s.comment),
   }));
-  const rawDog = Array.isArray(data.dogs) ? data.dogs[0]?.name : undefined;
+  const dogs = readDogs(data);
   return {
     sessions,
     contextNames: readContextNames(data.contexts),
-    // null when the backup doesn't have it (older backups) – then nothing changes.
-    dogName: typeof rawDog === 'string' && !validateDogName(rawDog) ? cleanContextName(rawDog) : null,
+    // The dogs in the backup ([] for the oldest backups – then nothing changes).
+    dogs,
+    // The first dog's name (null when the backup has none).
+    dogName: dogs[0]?.name ?? null,
     lang: LANGS.includes(data.lang) ? data.lang : null,
-    prepDone: cleanPrepDone(data.prepDone), // missing in older backups = none
+    prepDone: dogs[0]?.prepDone ?? cleanPrepDone(data.prepDone), // the first dog's ticks
   };
+}
+
+// [{ id, name, prepDone }] – valid entries only, at most MAX_DOGS. Before v0.18 there was one
+// dog with the app-wide ticks in data.prepDone.
+function readDogs(data) {
+  const out = [];
+  for (const [i, d] of (Array.isArray(data.dogs) ? data.dogs : []).entries()) {
+    if (out.length >= MAX_DOGS) break;
+    const id = d?.id ? String(d.id) : i === 0 ? 'charlie' : null;
+    if (!id || out.some((x) => x.id === id)) continue;
+    if (typeof d.name !== 'string' || validateDogName(d.name)) continue;
+    const prep = Array.isArray(d.prepDone) ? d.prepDone : i === 0 ? data.prepDone : [];
+    out.push({ id, name: cleanContextName(d.name), prepDone: cleanPrepDone(prep) });
+  }
+  return out;
 }
 
 function notBackup() {
@@ -81,8 +99,9 @@ function notBackup() {
 // Missing settings in the backup are never reported and never applied.
 export function settingsChanges(state, parsed) {
   const out = [];
-  if (parsed?.dogName && parsed.dogName !== state.dogs[0].name) {
-    out.push({ kind: 'dog', current: state.dogs[0].name, fromBackup: parsed.dogName });
+  for (const d of parsed?.dogs ?? []) {
+    const mine = state.dogs.find((x) => x.id === d.id);
+    if (mine && mine.name !== d.name) out.push({ kind: 'dog', id: d.id, current: mine.name, fromBackup: d.name });
   }
   if (parsed?.lang && state.lang && parsed.lang !== state.lang) {
     out.push({ kind: 'lang', current: state.lang, fromBackup: parsed.lang });
@@ -123,23 +142,56 @@ function isValidSession(s) {
   );
 }
 
-// Adds sessions whose id isn't already present. Unknown contexts go to Home.
-export function mergeSessions(state, incoming) {
+// Dogs in the backup that are not on this phone and would be added (room for MAX_DOGS):
+// { add: [{ id, name }], noRoom: [{ id, name }] }. A name already used here gets a number.
+export function dogsToAdd(state, parsed) {
+  const add = [];
+  const noRoom = [];
+  const used = { ...state, dogs: [...state.dogs] };
+  for (const d of parsed?.dogs ?? []) {
+    if (used.dogs.some((x) => x.id === d.id)) continue;
+    if (!parsed.sessions.some((s) => s.dogId === d.id)) continue; // only dogs that have sessions
+    if (used.dogs.length >= MAX_DOGS) {
+      noRoom.push({ id: d.id, name: d.name });
+      continue;
+    }
+    let name = d.name;
+    for (let n = 2; dogNameTaken(used, name); n++) name = `${d.name} ${n}`;
+    const dog = { id: d.id, name, prepDone: d.prepDone ?? [] };
+    used.dogs.push(dog);
+    add.push(dog);
+  }
+  return { add, noRoom };
+}
+
+// Adds sessions whose id isn't already present. Unknown contexts go to Home. Dogs from the backup
+// that aren't on this phone are added (up to 3); sessions of a dog there is no room for are
+// skipped. Sessions without a known dog (oldest backups) belong to the first dog.
+export function mergeSessions(state, incoming, parsed = null) {
   const have = new Set(state.sessions.map((s) => s.id));
   const known = new Set(state.contexts.map((c) => c.id));
-  const added = incoming
-    .filter((s) => !have.has(s.id))
+  const { add } = dogsToAdd(state, parsed ?? { dogs: [], sessions: incoming });
+  const dogs = [...state.dogs, ...add];
+  const dogIds = new Set(dogs.map((d) => d.id));
+  const backupDogIds = new Set((parsed?.dogs ?? []).map((d) => d.id));
+  const fresh = incoming.filter((s) => !have.has(s.id));
+  const added = fresh
+    // A dog named in the backup but not added (no room): its sessions are left out.
+    .filter((s) => dogIds.has(s.dogId) || !backupDogIds.has(s.dogId))
+    .map((s) => ({ ...s, dogId: dogIds.has(s.dogId) ? s.dogId : dogs[0].id }))
     .map((s) => (known.has(s.contextId) ? s : { ...s, contextId: 'home' }));
   return {
-    state: { ...state, sessions: [...state.sessions, ...added] },
+    state: { ...state, dogs, sessions: [...state.sessions, ...added] },
     added: added.length,
     skipped: incoming.length - added.length,
+    dogsAdded: add.map((d) => d.name),
   };
 }
 
 // Semicolon-separated so it opens in columns in Excel (also with Swedish settings).
 export function buildCsv(state) {
   const name = (id) => state.contexts.find((c) => c.id === id)?.name ?? id;
+  const dogName = (id) => state.dogs.find((d) => d.id === id)?.name ?? id;
   const pad = (n) => String(n).padStart(2, '0');
   const mmss = (sec) => (sec == null ? '' : `${Math.floor(sec / 60)}:${pad(sec % 60)}`);
   const rows = [...state.sessions]
@@ -149,6 +201,7 @@ export function buildCsv(state) {
       return [
         `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
         `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+        dogName(s.dogId),
         name(s.contextId),
         s.durationSec,
         mmss(s.durationSec),
@@ -164,7 +217,7 @@ export function buildCsv(state) {
       ];
     });
   const header = [
-    'Date', 'Time', 'Place', 'Actual (s)', 'Actual', 'Target (s)', 'Target', 'Result',
+    'Date', 'Time', 'Dog', 'Place', 'Actual (s)', 'Actual', 'Target (s)', 'Target', 'Result',
     'Worried after (s)', 'Worried after', 'Special circumstance', 'Easy session', 'Place ID', 'Comment',
   ];
   return ['sep=;', ...[header, ...rows].map((r) => r.map(csvCell).join(';'))].join('\r\n') + '\r\n';
@@ -197,5 +250,6 @@ export function importSummary(state, parsed) {
     lastAt: times[times.length - 1] ?? null,
     commentCount: fresh.filter((s) => s.comment).length,
     changes: settingsChanges(state, parsed),
+    ...(({ add, noRoom }) => ({ newDogs: add.map((d) => d.name), noRoomDogs: noRoom.map((d) => d.name) }))(dogsToAdd(state, parsed)),
   };
 }

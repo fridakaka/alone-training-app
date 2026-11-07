@@ -18,7 +18,7 @@ export function reminderPlan(state, now = Date.now()) {
   if (!a || !a.targetSec) return null;
   const at = a.startedAt + a.targetSec * 1000;
   if (at <= now) return null;
-  const dog = state.dogs?.[0]?.name ?? '';
+  const dog = (state.dogs?.find((d) => d.id === a.dogId) ?? state.dogs?.[0])?.name ?? '';
   return {
     key: `${a.startedAt}:${a.targetSec}`,
     at,

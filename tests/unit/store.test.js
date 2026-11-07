@@ -77,3 +77,29 @@ test('language and dog name are saved; unusable values fall back safely', () => 
   assert.equal(loadState(store).lang, null);
   assert.equal(loadState(store).dogs[0].name, 'Charlie');
 });
+
+test('v0.18: data with one dog and app-wide "Start here" ticks loads as before (ticks → the first dog)', async () => {
+  const { loadState } = await import('../../src/store.js');
+  const mem = new Map([['alone-training:v2', JSON.stringify({
+    schemaVersion: 2, onboarded: true, dogs: [{ id: 'charlie', name: 'Majken' }], prepDone: ['prepStep2'],
+    contexts: [], sessions: [{ id: 'a', dogId: 'charlie', contextId: 'home', startedAt: 1, durationSec: 5, result: 'good' }],
+  })]]);
+  const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+  const s = loadState(storage);
+  assert.deepEqual(s.dogs, [{ id: 'charlie', name: 'Majken', prepDone: ['prepStep2'] }]);
+  assert.equal(s.selectedDogId, 'charlie');
+  assert.equal('prepDone' in s, false);
+  assert.equal(s.sessions.length, 1);
+});
+
+test('v0.18: three dogs are kept (a fourth is dropped); the dog of a running session is shown', async () => {
+  const { loadState } = await import('../../src/store.js');
+  const dogs = [{ id: 'charlie', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }, { id: 'd', name: 'D' }];
+  const mem = new Map([['alone-training:v2', JSON.stringify({
+    schemaVersion: 2, onboarded: true, dogs, selectedDogId: 'charlie', contexts: [], sessions: [],
+    active: { dogId: 'c', contextId: 'home', startedAt: 1, targetSec: null },
+  })]]);
+  const s = loadState({ getItem: (k) => mem.get(k) ?? null, setItem: () => {} });
+  assert.deepEqual(s.dogs.map((d) => d.id), ['charlie', 'b', 'c']);
+  assert.equal(s.selectedDogId, 'c');
+});

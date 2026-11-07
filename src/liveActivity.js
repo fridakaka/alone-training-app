@@ -9,7 +9,7 @@ import { t } from './i18n.js';
 export function liveActivityPayload(state) {
   const a = state?.active;
   if (!a) return null;
-  const dogName = state.dogs?.[0]?.name ?? '';
+  const dogName = (state.dogs?.find((d) => d.id === a.dogId) ?? state.dogs?.[0])?.name ?? '';
   const placeName = state.contexts?.find((c) => c.id === a.contextId)?.name ?? '';
   return {
     sessionId: String(a.startedAt),

@@ -17,7 +17,15 @@ import {
   validateContextNames,
   renameDog,
   validateDogName,
-  setPendingComment,
+  currentDog,
+  addDog,
+  selectDog,
+  removeDog,
+  renameDogs,
+  validateDogNames,
+  validateNewDog,
+  clearPrepDone,
+  MAX_DOGS,
   completeOnboarding,
   createInitialState,
   setPrepDone,
@@ -51,17 +59,19 @@ let state = loadState();
 // (what the app has always shown) until they pick one in the small language banner.
 setLang(state.lang ?? (state.onboarded ? 'en' : guessLang()));
 
-// Still one dog. The context comes from the picker (remembered in state).
-const dogId = () => state.dogs[0].id;
-const dogName = () => state.dogs[0].name;
+// Up to three dogs (v0.18): the one chosen in the menu, or the one whose session is running.
+// The context comes from the picker (remembered in state).
+const dogId = () => currentDog(state).id;
+const dogName = () => currentDog(state).name;
 const contextId = () =>
   state.active?.contextId ?? state.pending?.contextId ?? state.selectedContextId;
 const current = () => ({ dogId: dogId(), contextId: contextId() });
 const contextName = (id) => state.contexts.find((c) => c.id === id)?.name ?? id;
 
-// Target chosen on the ready screen, per context. Not saved: if nothing was
+// Target chosen on the ready screen, per dog and context. Not saved: if nothing was
 // touched the suggestion is used. `undefined` = use suggestion, `null` = no target.
 const draftTargets = {};
+const draftKey = () => `${dogId()}:${contextId()}`;
 
 function update(next) {
   state = next;
@@ -95,7 +105,7 @@ function renderIntro(box) {
   const example = document.createElement('p');
   example.className = 'intro-example';
   example.append(Object.assign(document.createElement('strong'), { textContent: `${t('introExampleTitle')}: ` }), t('introExample'));
-  box.replaceChildren(p('introLead', 'intro-lead'), steps, example, p('introNote', 'intro-note'));
+  box.replaceChildren(p('introLead', 'intro-lead'), steps, p('introDogs', 'intro-dogs'), example, p('introNote', 'intro-note'));
 }
 
 // "Start here": practice steps with saved ticks. Only a checklist – never a session, never
@@ -117,7 +127,7 @@ function renderPrep() {
 }
 
 function renderPrepTicks() {
-  const done = new Set(state.prepDone ?? []);
+  const done = new Set(currentDog(state).prepDone ?? []);
   for (const box of $('prep-list').querySelectorAll('input[data-step]')) box.checked = done.has(box.dataset.step);
   $('prep-reset').hidden = done.size === 0;
 }
@@ -126,7 +136,7 @@ $('prep-list').addEventListener('change', (e) => {
   const box = e.target.closest('input[data-step]');
   if (box) update(setPrepDone(state, box.dataset.step, box.checked));
 });
-$('prep-reset').addEventListener('click', () => update({ ...state, prepDone: [] }));
+$('prep-reset').addEventListener('click', () => update(clearPrepDone(state)));
 
 // ---------- pages and menu ----------
 // The main screen keeps only what you need to train. Previous sessions, settings, data and
@@ -212,8 +222,110 @@ function renderPages() {
     if (b.dataset.nav === view) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   }
+  if (menuOpen) renderMenuDogs();
   renderLiveBar();
 }
+
+// ---------- dogs (up to three, v0.18) ----------
+
+function renderMenuDogs() {
+  const busy = Boolean(state.active || state.pending);
+  const current = dogId();
+  const buttons = state.dogs.map((d) => {
+    const b = Object.assign(document.createElement('button'), { type: 'button', className: 'menu-dog', textContent: d.name });
+    b.dataset.dog = d.id;
+    b.setAttribute('aria-pressed', String(d.id === current));
+    b.disabled = busy && d.id !== current;
+    return b;
+  });
+  if (state.dogs.length < MAX_DOGS) {
+    const add = Object.assign(document.createElement('button'), { type: 'button', className: 'menu-dog add', id: 'add-dog-btn', textContent: t('addDog') });
+    add.disabled = busy;
+    buttons.push(add);
+  }
+  $('menu-dog-list').replaceChildren(...buttons);
+  $('menu-dogs-busy').hidden = !busy || state.dogs.length < 2;
+}
+
+$('menu-dog-list').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b || b.disabled) return;
+  if (b.id === 'add-dog-btn') {
+    menuOpen = false;
+    render();
+    return openAddDog();
+  }
+  const next = selectDog(state, b.dataset.dog);
+  if (next !== state) {
+    targetEditorOpen = false;
+    state = next;
+    saveState(state);
+  }
+  go('home');
+});
+
+const dogDialog = $('dog-dialog');
+
+function openAddDog() {
+  if (state.dogs.length >= MAX_DOGS) return;
+  $('new-dog-name').value = '';
+  $('dog-error').textContent = '';
+  $('dog-dialog').querySelector('[data-i18n="addDogHint"]').textContent = t('addDogHint', { max: MAX_DOGS });
+  dogDialog.showModal();
+  $('new-dog-name').focus();
+}
+
+$('settings-add-dog').addEventListener('click', () => openAddDog());
+$('dog-cancel').addEventListener('click', () => dogDialog.close());
+$('new-dog-name').addEventListener('input', () => ($('dog-error').textContent = ''));
+
+$('dog-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const name = $('new-dog-name').value;
+  const err = validateNewDog(state, name);
+  if (err) return void ($('dog-error').textContent = dogError(err));
+  dogDialog.close();
+  const wasSettings = view === 'settings';
+  update(addDog(state, name));
+  if (wasSettings) {
+    fillSettingsForm();
+    $('settings-status').textContent = t('dogAdded', { dog: dogName() });
+  } else {
+    go('home');
+  }
+});
+
+const removeDogDialog = $('remove-dog-dialog');
+let removingDog = null;
+
+function openRemoveDog(id) {
+  const dog = state.dogs.find((d) => d.id === id);
+  if (!dog || state.dogs.length < 2) return;
+  removingDog = id;
+  const n = state.sessions.filter((s) => s.dogId === id).length;
+  $('remove-dog-title').textContent = t('removeDogTitle', { dog: dog.name });
+  $('remove-dog-text').textContent = n ? t('removeDogText', { dog: dog.name, n }) : t('removeDogTextNone', { dog: dog.name });
+  removeDogDialog.showModal();
+}
+
+$('remove-dog-cancel').addEventListener('click', () => {
+  removingDog = null;
+  removeDogDialog.close();
+});
+
+$('remove-dog-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const dog = state.dogs.find((d) => d.id === removingDog);
+  removeDogDialog.close();
+  if (!dog) return;
+  removingDog = null;
+  try {
+    localStorage.setItem(`alone-training:before-remove-dog-${Date.now()}`, JSON.stringify(state));
+  } catch {}
+  update(removeDog(state, dog.id));
+  fillSettingsForm();
+  $('settings-status').textContent = t('dogRemoved', { dog: dog.name });
+});
 
 // On another page during a session: a clear way back. The session itself is never touched.
 function renderLiveBar() {
@@ -257,7 +369,10 @@ $('welcome-form').addEventListener('submit', (e) => {
 $('welcome-form').addEventListener('input', () => ($('welcome-error').textContent = ''));
 
 function dogError(code) {
-  return code === 'tooLong' ? t('errDogTooLong', { max: MAX_DOG_NAME }) : t('errDogEmpty');
+  if (code === 'tooLong') return t('errDogTooLong', { max: MAX_DOG_NAME });
+  if (code === 'duplicate') return t('errDogDuplicate');
+  if (code === 'full') return t('errDogsFull', { max: MAX_DOGS });
+  return t('errDogEmpty');
 }
 
 function placeError(code) {
@@ -336,7 +451,7 @@ function syncReminder() {
 
 $('start-btn').addEventListener('click', () => {
   const { value: targetSec, suggestion } = currentTarget();
-  delete draftTargets[contextId()];
+  delete draftTargets[draftKey()];
   const easy = suggestion.kind === KINDS.EASY && targetSec === suggestion.sec;
   update(startSession(state, { ...current(), targetSec, easy, now: Date.now() }));
 });
@@ -383,7 +498,7 @@ function applyTargetEditor() {
     $('target-error').textContent = t('targetErrMin');
     return;
   }
-  draftTargets[contextId()] = input.value;
+  draftTargets[draftKey()] = input.value;
   closeTargetEditor();
 }
 
@@ -411,8 +526,8 @@ $('target-chips').addEventListener('click', (e) => {
 
 function setDraft(value) {
   targetEditorOpen = false;
-  if (value === undefined) delete draftTargets[contextId()];
-  else draftTargets[contextId()] = value;
+  if (value === undefined) delete draftTargets[draftKey()];
+  else draftTargets[draftKey()] = value;
   render();
 }
 
@@ -425,8 +540,8 @@ function suggestionSettings() {
 
 function currentTarget() {
   const suggestion = suggestTarget(sessionsFor(state, current()), { now: Date.now(), settings: suggestionSettings() });
-  const ctx = contextId();
-  const value = ctx in draftTargets ? draftTargets[ctx] : suggestion.sec;
+  const key = draftKey();
+  const value = key in draftTargets ? draftTargets[key] : suggestion.sec;
   return { suggestion, suggested: suggestion.sec, repeat: suggestion.repeatSec, value };
 }
 
@@ -441,17 +556,10 @@ $('end-btn').addEventListener('click', () => {
   update(endSession(state, Date.now()));
 });
 
-// The comment typed on the result screen is kept with the pending session (survives a reload)
-// and saved together with whichever result is chosen. Saving without a comment is fine.
-$('result-comment').addEventListener('input', () => {
-  state = setPendingComment(state, $('result-comment').value);
-  saveState(state);
-});
-
-// Saved right away, so nothing is lost. The next screen shows the comment again (editable),
-// and after "Didn't go well" also asks the optional worry question.
+// Saved right away, so nothing is lost. The next screen has the comment box (once), and after
+// "Didn't go well" also the optional worry question.
 function rate(result) {
-  const next = recordResult(syncPendingComment(), result);
+  const next = recordResult(state, result);
   savedFor = next.sessions[next.sessions.length - 1]?.id ?? null;
   savedFilled = null;
   clearOnsetInputs();
@@ -459,10 +567,6 @@ function rate(result) {
 }
 $('good-btn').addEventListener('click', () => rate(RESULTS.GOOD));
 $('bad-btn').addEventListener('click', () => rate(RESULTS.BAD));
-
-function syncPendingComment() {
-  return setPendingComment(state, $('result-comment').value);
-}
 
 // ---------- after rating: comment (editable) and, after "didn't go well", the worry question ----------
 
@@ -628,8 +732,6 @@ function render() {
     $('result-target').textContent = state.pending.targetSec
       ? t('resultTargetSuffix', { time: formatTarget(state.pending.targetSec) })
       : '';
-    // Fill the comment box when the result screen appears (e.g. after a reload).
-    if (lastMode !== 'result') $('result-comment').value = state.pending.comment ?? '';
   }
   lastMode = mode;
 
@@ -671,7 +773,33 @@ function renderSettingsInfo() {
 // ---------- settings: dog name, language, place names ----------
 
 function fillSettingsForm() {
-  $('settings-dog').value = dogName();
+  // One name field per dog; "Remove" when there is more than one (never the dog of a running session).
+  const busyDog = state.active?.dogId ?? state.pending?.dogId;
+  $('dog-fields').replaceChildren(
+    ...state.dogs.map((d, i) => {
+      const row = Object.assign(document.createElement('div'), { className: 'dog-field' });
+      const label = Object.assign(document.createElement('label'), { className: 'place-field' });
+      const title = Object.assign(document.createElement('span'), {
+        className: 'place-field-label',
+        textContent: state.dogs.length > 1 ? t('dogN', { n: i + 1 }) : t('dogNameLabel'),
+      });
+      const input = Object.assign(document.createElement('input'), {
+        type: 'text', id: `dog-name-${d.id}`, value: d.name, autocomplete: 'off', spellcheck: false, maxLength: MAX_DOG_NAME + 10,
+      });
+      input.dataset.dogId = d.id;
+      input.setAttribute('enterkeyhint', 'done');
+      label.append(title, input);
+      row.append(label);
+      if (state.dogs.length > 1 && d.id !== busyDog) {
+        const rm = Object.assign(document.createElement('button'), { type: 'button', className: 'btn-link', textContent: t('removeDog') });
+        rm.dataset.removeDog = d.id;
+        rm.setAttribute('aria-label', t('removeDogAria', { dog: d.name }));
+        row.append(rm);
+      }
+      return row;
+    }),
+  );
+  $('settings-add-dog').hidden = state.dogs.length >= MAX_DOGS;
   for (const r of document.querySelectorAll('input[name="settings-lang"]')) r.checked = r.value === getLang();
   const box = $('places-fields');
   if (!box.children.length) {
@@ -702,7 +830,8 @@ function fillSettingsForm() {
 
 $('settings-form').addEventListener('submit', (e) => {
   e.preventDefault();
-  const dogErr = validateDogName($('settings-dog').value);
+  const dogNames = Object.fromEntries(state.dogs.map((d) => [d.id, $(`dog-name-${d.id}`)?.value ?? d.name]));
+  const dogErr = validateDogNames(state, dogNames);
   if (dogErr) return void ($('settings-error').textContent = dogError(dogErr));
   const names = Object.fromEntries(state.contexts.map((c) => [c.id, $(`place-name-${c.id}`).value]));
   const placeErr = validateContextNames(state, names);
@@ -711,7 +840,7 @@ $('settings-form').addEventListener('submit', (e) => {
 
   // Only labels and the interface language change. Ids, sessions and suggestions stay.
   // A language switch never renames places – the names are the user's own text.
-  let next = renameContexts(renameDog(state, $('settings-dog').value), names);
+  let next = renameContexts(renameDogs(state, dogNames), names);
   if (LANGS.includes(lang) && (lang !== state.lang)) {
     next = { ...next, lang };
     namesOffer = defaultNameOffer(next.contexts, lang);
@@ -731,6 +860,10 @@ $('settings-cancel').addEventListener('click', () => {
 });
 
 $('settings-form').addEventListener('input', () => ($('settings-error').textContent = ''));
+$('dog-fields').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-remove-dog]');
+  if (b) openRemoveDog(b.dataset.removeDog);
+});
 
 // ---------- ready screen ----------
 
@@ -1227,6 +1360,8 @@ function openImport(parsed, mode) {
   if (sum.newCount) items.push(t('importPeriod', { from: dateOnly(sum.firstAt), to: dateOnly(sum.lastAt) }));
   if (sum.commentCount) items.push(t('importComments', { n: sum.commentCount }));
   if (sum.existingCount) items.push(t('importExisting', { n: sum.existingCount }));
+  if (mode !== 'welcome' && sum.newDogs.length) items.push(t('importNewDogs', { list: listNames(sum.newDogs) }));
+  if (sum.noRoomDogs.length) items.push(t('importNoRoomDogs', { max: MAX_DOGS, list: listNames(sum.noRoomDogs) }));
   $('import-summary').replaceChildren(...items.map((x) => Object.assign(document.createElement('li'), { textContent: x })));
 
   // Settings: on a brand-new phone they are simply taken from the backup (nothing to overwrite);
@@ -1238,7 +1373,7 @@ function openImport(parsed, mode) {
     box.hidden = !show;
     $('import-settings-text').textContent = show
       ? t('importSettingsNew', {
-          dog: parsed.dogName ?? state.dogs[0].name,
+          dog: parsed.dogs.length ? listNames(parsed.dogs.map((d) => d.name)) : state.dogs[0].name,
           lang: LANG_NAMES[parsed.lang ?? welcomeLang],
           places: listNames(names ?? Object.values(DEFAULT_PLACE_NAMES[parsed.lang ?? welcomeLang])),
         })
@@ -1281,21 +1416,31 @@ $('import-form').addEventListener('submit', (e) => {
   try {
     localStorage.setItem(`alone-training:before-restore-${Date.now()}`, JSON.stringify(state));
   } catch {}
-  let next = mergeSessions(state, parsed.sessions);
+  // A brand-new phone simply takes the backup's dogs (nothing to keep yet).
+  let base = state;
+  if (mode === 'welcome' && parsed.dogs.length && !state.sessions.length) {
+    base = { ...state, dogs: parsed.dogs.map((d) => ({ ...d })), selectedDogId: parsed.dogs[0].id };
+  }
+  let next = mergeSessions(base, parsed.sessions, parsed);
   const { added, skipped } = next;
   next = next.state;
-  // "Start here" ticks from the backup are added; none are removed.
-  for (const k of parsed.prepDone ?? []) next = setPrepDone(next, k, true);
+  // "Start here" ticks from the backup are added (per dog); none are removed. Oldest backups
+  // without dogs: the ticks belong to the first dog.
+  const ticks = parsed.dogs.length ? parsed.dogs : [{ id: next.dogs[0].id, prepDone: parsed.prepDone ?? [] }];
+  for (const d of ticks) {
+    if (!next.dogs.some((x) => x.id === d.id)) continue;
+    for (const k of d.prepDone ?? []) next = setPrepDone(next, k, true, d.id);
+  }
   if (mode === 'welcome') {
     const lang = parsed.lang ?? welcomeLang;
     next = completeOnboarding(next, {
       lang,
-      dogName: parsed.dogName ?? next.dogs[0].name,
+      dogName: next.dogs[0].name,
       placeNames: parsed.contextNames ?? DEFAULT_PLACE_NAMES[lang],
     });
     setLang(lang);
   } else if (useSettings) {
-    if (parsed.dogName) next = renameDog(next, parsed.dogName);
+    for (const c of importSummary(state, parsed).changes.filter((x) => x.kind === 'dog')) next = renameDog(next, c.fromBackup, c.id);
     if (parsed.contextNames) next = renameContexts(next, parsed.contextNames);
     if (parsed.lang && next.lang) {
       next = { ...next, lang: parsed.lang };
@@ -1332,4 +1477,4 @@ $('edit-form').addEventListener('input', () => ($('edit-error').textContent = ''
 $('view-onset').addEventListener('input', () => ($('onset-error').textContent = ''));
 
 // Comments: never more than MAX_COMMENT characters (also enforced when saving).
-for (const id of ['result-comment', 'saved-comment', 'edit-comment']) $(id).maxLength = MAX_COMMENT;
+for (const id of ['saved-comment', 'edit-comment']) $(id).maxLength = MAX_COMMENT;
