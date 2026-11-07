@@ -561,3 +561,31 @@ test('no easy session after a hard session, a break, or a special circumstance',
   assert.notEqual(suggest([...ok, good(0.5, 300, { uncertain: true })], NOW, always).kind, KINDS.EASY);
   assert.notEqual(suggest([], NOW, always).kind, KINDS.EASY);
 });
+
+// ---------- "Don't know" (v0.19): judged on return ----------
+
+test('"don\'t know" + calm on return: counts as went well, but the next session keeps the same target', () => {
+  const steady = [good(4, 600, { targetSec: 600 }), good(3, 600, { targetSec: 600 }), good(2, 660, { targetSec: 660 })];
+  // Without the mark this would be an increase.
+  const normal = suggest([...steady, good(1, 660, { targetSec: 660 })]);
+  assert.ok(normal.sec > 660, `${normal.sec}`);
+  const calm = suggest([...steady, good(1, 660, { targetSec: 660, returnCheck: 'calm' })]);
+  assert.equal(calm.kind, KINDS.REPEAT);
+  assert.equal(calm.sec, 660);
+  assert.equal(calm.note, NOTES.CALM);
+  // No target: the time of the session (rounded down).
+  assert.equal(suggest([...steady, good(1, 667, { returnCheck: 'calm' })]).sec, 660);
+  // It counts as a good session: a normal good one after it raises again.
+  const after = suggest([...steady, good(1, 660, { targetSec: 660, returnCheck: 'calm' }), good(0.5, 660, { targetSec: 660 })]);
+  assert.ok(after.sec > 660);
+  // Never an easy session right after it (it would not be "the same target").
+  const always = { ...S, EASY_EVERY_MIN: 1, EASY_EVERY_MAX: 1 };
+  assert.equal(suggest([...steady, good(1, 660, { targetSec: 660, returnCheck: 'calm' })], NOW, always).sec, 660);
+});
+
+test('"don\'t know" + excited on return: a hard session like any other', () => {
+  const steady = [good(3, 600, { targetSec: 600 }), good(2, 600, { targetSec: 600 })];
+  const sug = suggest([...steady, bad(1, 600, { targetSec: 600, returnCheck: 'unsettled' })]);
+  assert.equal(sug.hard, HARD.LATEST);
+  assert.ok(sug.sec == null || sug.sec < 600);
+});

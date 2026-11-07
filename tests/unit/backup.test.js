@@ -82,14 +82,14 @@ test('Excel export has one row per session, oldest first, semicolon separated', 
   const state = { ...createInitialState(), sessions: [sess('s2', { contextId: 'outside-shop', targetSec: 120, result: 'bad' }), sess('s1')] };
   const lines = buildCsv(state).trim().split('\r\n');
   assert.equal(lines[0], 'sep=;');
-  assert.equal(lines[1], 'Date;Time;Dog;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Easy session;Place ID;Comment');
+  assert.equal(lines[1], 'Date;Time;Dog;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Easy session;On return;Place ID;Comment');
   assert.equal(lines.length, 4);
-  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Charlie;Home;90;1:30;;;Went well;;;;;home;$/);
-  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;;;outside-shop;$/);
+  assert.match(lines[2], /^2026-09-01;\d\d:\d\d;Charlie;Home;90;1:30;;;Went well;;;;;;home;$/);
+  assert.match(lines[3], /;Outside shop;90;1:30;120;2:00;Didn't go well;;;;;;outside-shop;$/);
   const withNew = { ...state, sessions: [sess('s3', { result: 'bad', anxietyOnsetSec: 45 }), sess('s4', { uncertain: true })] };
   const [, , a, b] = buildCsv(withNew).trim().split('\r\n');
-  assert.match(a, /;Didn't go well;45;0:45;;;home;$/);
-  assert.match(b, /;Went well;;;Yes;;home;$/);
+  assert.match(a, /;Didn't go well;45;0:45;;;;home;$/);
+  assert.match(b, /;Went well;;;Yes;;;home;$/);
 });
 
 test('backup file name contains the date', () => {
@@ -241,8 +241,8 @@ test('easy sessions survive a backup; the Excel file says which were easy', () =
   assert.equal(sessions[0].easy, true);
   assert.equal('easy' in sessions[1], false);
   const rows = buildCsv(state).trim().split('\r\n');
-  assert.match(rows[2], /;Went well;;;;Yes;home;$/);
-  assert.match(rows[3], /;Went well;;;;;home;$/);
+  assert.match(rows[2], /;Went well;;;;Yes;;home;$/);
+  assert.match(rows[3], /;Went well;;;;;;home;$/);
 });
 
 // ---------- v0.18: several dogs ----------
@@ -283,4 +283,17 @@ test('several dogs: restoring adds missing dogs (up to 3) with their sessions; a
   // Oldest backups (no dogs): everything belongs to the first dog.
   const old = mergeSessions(selectDog(phone, 'x'), [dogSess('zz', undefined)]);
   assert.equal(old.state.sessions[0].dogId, 'charlie');
+});
+
+test('"don\'t know": the return check survives a backup and is in the Excel file', () => {
+  const st = { ...createInitialState(), sessions: [
+    { ...dogSess('a', 'charlie'), returnCheck: 'calm' },
+    { ...dogSess('bb', 'charlie'), result: 'bad', returnCheck: 'unsettled' },
+    { ...dogSess('ccc', 'charlie'), result: 'bad', returnCheck: 'calm' }, // inconsistent → dropped
+  ] };
+  const { sessions } = parseBackup(buildBackup(st));
+  assert.deepEqual(sessions.map((s) => s.returnCheck), ['calm', 'unsettled', undefined]);
+  const rows = buildCsv(st).trim().split('\r\n');
+  assert.match(rows[2], /;Went well;;;;;Calm;home;$/);
+  assert.match(rows[3], /;Didn't go well;;;;;Excited;home;$/);
 });

@@ -147,3 +147,11 @@ test('an easy session is explained: half the level, why, the next regular time ‚
   assert.equal(afterBase.note, without.note);
   assert.equal(after.regularSec ?? after.sec, sug.regularSec);
 });
+
+test('"don\'t know" + calm: a short line under the time says why it is the same time', () => {
+  const sessions = [s(4, 600, 'good', { targetSec: 600 }), s(3, 600, 'good', { targetSec: 600 }), s(2, 660, 'good', { targetSec: 660 }), s(1, 660, 'good', { targetSec: 660, returnCheck: 'calm' })];
+  const sug = suggestTarget(sessions, { now: NOW });
+  assert.equal(shownUnderTime(sug), true);
+  const { key, params } = explanationKey(sug);
+  assert.equal(t(key, { dog: 'Charlie', ...params }, 'sv'), 'Du visste inte hur passet gick, men Charlie var lugn n√§r du kom hem: samma tid igen.');
+});

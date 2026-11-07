@@ -96,6 +96,7 @@ export const HARD = Object.freeze({ LATEST: 'latest', RECENT: 'recent' });
 
 // Extra detail for the explanation of REPEAT / RAISE / RECOVER.
 export const NOTES = Object.freeze({
+  CALM: 'calm', // "don't know" + calm on return: counted as good, but the same time again
   SHORTER: 'shorter', // the latest good session ended before the suggestion – it did not lower it
   ONCE: 'once', // the level went well once – once more before it goes up
   BACK: 'back', // just back at the level from before the hard session
@@ -150,6 +151,21 @@ export function suggestTarget(sessions, { now = Date.now(), settings = SUGGESTIO
     else if (excluded.has(latest) || specials.has(latest)) base.note = NOTES.SPECIAL;
   }
 
+  // "Don't know" how the latest session went, but the dog was calm on return: it counts as a
+  // good session, yet the next one keeps the same target (no increase on an unclear session).
+  if (latest && latest === last && latest.result === 'good' && latest.returnCheck === 'calm' && !isSpecial(latest) && base.sec != null &&
+      [KINDS.RAISE, KINDS.REPEAT, KINDS.RECOVER].includes(base.kind)) {
+    const same = latest.targetSec > 0 ? latest.targetSec : floorNatural(latest.durationSec);
+    if (same >= 1 && base.sec > same) {
+      base.sec = same;
+      base.kind = KINDS.REPEAT;
+      base.note = NOTES.CALM;
+      base.step = null;
+    } else if (same >= 1 && base.sec === same) {
+      base.note = NOTES.CALM;
+    }
+  }
+
   let repeatSec = null;
   // Repeat is only offered next to an actual suggestion, right after a session that went well,
   // and never far above the suggestion.
@@ -187,7 +203,7 @@ export function easyEvery(seedMs, S = SUGGESTION_SETTINGS) {
 function easyTurn(all, sug, S) {
   if (!S.EASY_SESSIONS) return null;
   if (![KINDS.RAISE, KINDS.REPEAT].includes(sug.kind) || sug.sec == null) return null;
-  if ([NOTES.SPECIAL, NOTES.MANY_SPECIAL, NOTES.BACK].includes(sug.note)) return null;
+  if ([NOTES.SPECIAL, NOTES.MANY_SPECIAL, NOTES.BACK, NOTES.CALM].includes(sug.note)) return null;
   const base = sug.typical ?? sug.level;
   const sec = base ? floorNatural(base * S.EASY_RATIO) : 0;
   if (sec < 1 || sec >= sug.sec) return null;

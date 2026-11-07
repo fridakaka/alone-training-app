@@ -64,6 +64,19 @@ learn that it always gets harder. So easier sessions are mixed in.
   the easy target); then it counts like any good session. One that doesn't go well counts like any
   hard session.
 
+## "Don't know" – judged on return (v0.19)
+
+Next to *Went well* and *Didn't go well* there is *Don't know*. It asks how the dog was when you
+came back:
+
+- **Calm** → saved as *went well* (`returnCheck: 'calm'`) and counts as a good session, but the next
+  suggestion is **the same target as that session** (its planned time, or its time rounded down
+  when it had none) – never an increase or an easy session right after an unclear session. A
+  lower suggestion (e.g. still limited by a hard session) stays lower.
+- **Excited** → saved as *didn't go well* (`returnCheck: 'unsettled'`), a hard session like any
+  other; the usual optional worry-time question follows.
+- Editing the result later removes the mark. Kept in backups; "On return" column in Excel.
+
 ## Earlier stable level (history only)
 
 The longest time that ≥ 2 good sessions on ≥ 2 different days (within 7 days of each other)
@@ -159,6 +172,7 @@ From "No target", **+** opens time entry instead of guessing a time. Tapping the
 | 22 | reported: two good sessions at the suggested 0:45 | **0:50** (before: 0:45 again, although the text said "small increase") |
 | 25 | following the suggestions for 60 sessions | an easy session (half the level) every 3rd–5th, the regular times exactly as without them |
 | 26 | 3 × 10:00 good, then an easy 5:00 that went well | next: **11:00**, no "shorter" note |
+| 27 | 10:00, 10:00, 11:00 good, then "don't know" + calm at 11:00 | next: **11:00** (would have been an increase) |
 
 ## What the app cannot know
 

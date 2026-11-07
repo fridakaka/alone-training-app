@@ -440,3 +440,15 @@ test('dogs: renaming several at once; "Start here" ticks per dog', () => {
   s = setPrepDone(s, 'prepStep1', true, 'charlie');
   assert.deepEqual(clearPrepDone(s).dogs.map((d) => d.prepDone), [['prepStep1'], []]);
 });
+
+test('"don\'t know": the return check is saved with a matching result, and dropped if the result is edited', async () => {
+  const { RETURN_CHECK } = await import('../../src/training.js');
+  let s = endSession(startSession(createInitialState(), { ...where, targetSec: 60, now: 0 }), 70_000);
+  s = recordResult(s, RESULTS.GOOD, { returnCheck: RETURN_CHECK.CALM });
+  assert.equal(s.sessions[0].returnCheck, 'calm');
+  assert.equal('returnCheck' in updateSession(s, s.sessions[0].id, { result: RESULTS.BAD }).sessions[0], false);
+  assert.equal(updateSession(s, s.sessions[0].id, { comment: 'x' }).sessions[0].returnCheck, 'calm');
+  // A mismatching check is never stored.
+  const m = recordResult(endSession(startSession(createInitialState(), { ...where, now: 0 }), 5000), RESULTS.BAD, { returnCheck: 'calm' });
+  assert.equal('returnCheck' in m.sessions[0], false);
+});

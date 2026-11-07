@@ -125,10 +125,23 @@
       <!-- State 3: result. Rate first; the comment comes on the next screen (once). -->
       <section id="view-result" class="panel" hidden>
         <p class="label"><span data-i18n="resultFinished">Session finished</span> · <strong id="result-duration"></strong><span id="result-target"></span></p>
-        <h2 class="question" data-i18n="resultQuestion">How did it go?</h2>
-        <div class="choices">
-          <button id="good-btn" class="btn btn-good" type="button" data-i18n="good">Went well</button>
-          <button id="bad-btn" class="btn btn-bad" type="button" data-i18n="bad">Didn't go well</button>
+        <div id="result-main">
+          <h2 class="question" data-i18n="resultQuestion">How did it go?</h2>
+          <div class="choices three">
+            <button id="good-btn" class="btn btn-good" type="button" data-i18n="good">Went well</button>
+            <button id="bad-btn" class="btn btn-bad" type="button" data-i18n="bad">Didn't go well</button>
+            <button id="unsure-btn" class="btn btn-quiet" type="button" data-i18n="unsure">Don't know</button>
+          </div>
+        </div>
+        <!-- "Don't know" (v0.19): judged by how the dog was on your return. -->
+        <div id="unsure-block" class="unsure-block" hidden>
+          <h2 id="unsure-question" class="question"></h2>
+          <p class="label small" data-i18n="unsureHint"></p>
+          <div class="choices">
+            <button id="calm-btn" class="btn btn-good" type="button" data-i18n="calm">Calm</button>
+            <button id="unsettled-btn" class="btn btn-bad" type="button" data-i18n="unsettled">Excited</button>
+          </div>
+          <button id="unsure-back" class="btn-link" type="button" data-i18n="unsureBack">‹ Back</button>
         </div>
         <button id="discard-btn" class="btn-link" type="button" data-i18n="discard">Discard this session</button>
       </section>
@@ -295,6 +308,7 @@
             <li data-i18n="helpCalc4"></li>
             <li data-i18n-html="helpCalc5"></li>
             <li data-i18n-html="helpCalc6"></li>
+            <li data-i18n-html="helpCalcUnsure"></li>
             <li data-i18n-html="helpCalcEasy"></li>
             <li data-i18n-html="helpCalcSpecial"></li>
             <li data-i18n="helpCalcRecord"></li>

@@ -17,7 +17,7 @@ import { formatTarget } from './progression.js';
 // time. Ordinary increases/repeats are explained in the "Why …?" sheet instead (v0.15).
 export function shownUnderTime(suggestion) {
   const { kind, note, sec } = suggestion;
-  if ([NOTES.SPECIAL, NOTES.MANY_SPECIAL, NOTES.BACK].includes(note)) return true;
+  if ([NOTES.SPECIAL, NOTES.MANY_SPECIAL, NOTES.BACK, NOTES.CALM].includes(note)) return true;
   if ([KINDS.EASY, KINDS.EASIER, KINDS.RECOVER, KINDS.HARD_CHOOSE, KINDS.WORRIED_AT_ONCE, KINDS.BREAK, KINDS.TOO_LITTLE, KINDS.NONE].includes(kind)) return true;
   return kind === KINDS.LIMITED && sec == null;
 }
@@ -33,6 +33,7 @@ export function explanationKey(suggestion) {
       ? { key: 'explainSpecialHard', params: { time: formatTarget(backTo) } }
       : { key: 'explainSpecialGood' };
   }
+  if (note === NOTES.CALM) return { key: 'explainCalm' };
   // A good session that ended before the suggestion never lowers it – say so.
   if (note === NOTES.SHORTER && [KINDS.RAISE, KINDS.REPEAT, KINDS.RECOVER].includes(kind)) return { key: 'explainShorter' };
   switch (kind) {

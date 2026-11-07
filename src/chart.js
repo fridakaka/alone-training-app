@@ -16,8 +16,9 @@ export const CLIP_RATIO = 3;
 
 // "Didn't go well · worried at 0:30", "Went well · not counted". Used by graph and history.
 export function resultText(s) {
-  if (s.result === RESULTS.GOOD) return s.uncertain ? t('resultNotCounted') : t('good');
+  if (s.result === RESULTS.GOOD) return s.uncertain ? t('resultNotCounted') : s.returnCheck === 'calm' ? t('resultCalm') : t('good');
   if (s.uncertain) return t('resultBadSpecial');
+  if (s.returnCheck === 'unsettled' && !Number.isFinite(s.anxietyOnsetSec)) return t('resultUnsettled');
   return Number.isFinite(s.anxietyOnsetSec)
     ? t('resultWorriedAt', { time: formatTarget(s.anxietyOnsetSec) })
     : t('bad');

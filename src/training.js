@@ -3,6 +3,11 @@
 
 export const RESULTS = Object.freeze({ GOOD: 'good', BAD: 'bad' });
 
+// "Don't know" how it went (v0.19): judged by how the dog was on your return.
+// calm → counted as went well (the next session keeps the same target); unsettled → didn't go well.
+export const RETURN_CHECK = Object.freeze({ CALM: 'calm', UNSETTLED: 'unsettled' });
+export const resultForReturn = (check) => (check === RETURN_CHECK.CALM ? RESULTS.GOOD : check === RETURN_CHECK.UNSETTLED ? RESULTS.BAD : null);
+
 export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_CONTEXTS = Object.freeze([
@@ -235,12 +240,13 @@ export function endSession(state, now = Date.now()) {
   return { ...state, active: null, pending };
 }
 
-export function recordResult(state, result) {
+export function recordResult(state, result, { returnCheck = null } = {}) {
   if (!state.pending) return state;
   if (!Object.values(RESULTS).includes(result)) {
     throw new Error(`Unknown result: ${result}`);
   }
   const session = { id: makeId(state.pending.startedAt), ...state.pending, result };
+  if (returnCheck && resultForReturn(returnCheck) === result) session.returnCheck = returnCheck;
   return { ...state, pending: null, sessions: [...state.sessions, session] };
 }
 
@@ -270,6 +276,8 @@ export function updateSession(state, id, changes) {
     sessions: state.sessions.map((s) => {
       if (s.id !== id) return s;
       const next = { ...s, ...patch };
+      // The result was changed by hand: "judged on return" no longer describes it.
+      if (next.returnCheck && resultForReturn(next.returnCheck) !== next.result) delete next.returnCheck;
       if ('durationSec' in patch) next.endedAt = next.startedAt + next.durationSec * 1000;
       if ('anxietyOnsetSec' in changes) {
         if (changes.anxietyOnsetSec == null) next.anxietyOnsetSec = null;

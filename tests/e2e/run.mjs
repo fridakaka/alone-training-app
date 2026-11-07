@@ -508,8 +508,8 @@ try {
     const [dl] = await Promise.all([page.waitForEvent('download'), page.tap('#csv-btn')]);
     const csv = await readFile(await dl.path(), 'utf8');
     const lines = csv.trim().split('\r\n');
-    assert.equal(lines[1], 'Date;Time;Dog;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Easy session;Place ID;Comment');
-    assert.match(csv, /;Didn't go well;20;0:20;;;(car|outside-shop)/);
+    assert.equal(lines[1], 'Date;Time;Dog;Place;Actual (s);Actual;Target (s);Target;Result;Worried after (s);Worried after;Special circumstance;Easy session;On return;Place ID;Comment');
+    assert.match(csv, /;Didn't go well;20;0:20;;;;(car|outside-shop)/);
     const total = await page.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')).sessions.length);
     assert.equal(lines.length - 2, total);
     await page.locator('#data-section').screenshot({ path: OUT + '11-data.png' });
@@ -885,9 +885,9 @@ try {
     await open(p, 'data');
     const [csvDl] = await Promise.all([p.waitForEvent('download'), p.tap('#csv-btn')]);
     const csv = await readFile(await csvDl.path(), 'utf8');
-    assert.match(csv, /;Bilburen;300;5:00;;;Went well;;;;;car;\r\n/);
+    assert.match(csv, /;Bilburen;300;5:00;;;Went well;;;;;;car;\r\n/);
     assert.match(csv, /;Hela lägenheten;60;1:00;/);
-    assert.match(csv, /;Utanför affären;40;0:40;;;Didn't go well;;;;;outside-shop/);
+    assert.match(csv, /;Utanför affären;40;0:40;;;Didn't go well;;;;;;outside-shop/);
 
     // New backup with own names.
     await open(p, 'data');
@@ -2123,6 +2123,78 @@ try {
     assert.match(await p.textContent('#view-onset .special-field'), /ovanlig störning, eller passet avbröts/);
     assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await p.screenshot({ path: OUT + '41-onset-sv.png' });
+    await c.close();
+  });
+
+  await step('"Don\'t know" next to the results: calm on return → went well, same time next; excited → didn\'t go well', async () => {
+    const c = await newPhoneContext({ ...phone, serviceWorkers: 'block', locale: 'sv-SE' });
+    const p = await c.newPage();
+    watch(p);
+    await p.clock.install({ time: new Date('2026-11-07T10:00:00') });
+    await gotoApp(p, { lang: 'sv', dog: 'Charlie' });
+    const t = (sel) => p.textContent(sel).then((x) => x.trim());
+    const stored = () => p.evaluate(() => JSON.parse(localStorage.getItem('alone-training:v2')));
+    // Follows the suggested target (the first one is typed); returns the target used.
+    const run = async (first) => {
+      if (first) {
+        await p.tap('#target-up');
+        await p.fill('#target-sec', '30');
+        await p.tap('#target-set');
+      }
+      await p.tap('#start-btn');
+      const target = (await stored()).active.targetSec;
+      await p.clock.runFor(target * 1000 + 500);
+      await p.tap('#end-btn');
+      return target;
+    };
+    // A few good sessions → the app suggests more each time.
+    for (let i = 0; i < 3; i++) {
+      await run(i === 0);
+      await p.tap('#good-btn');
+      await p.tap('#saved-done');
+      await p.clock.runFor(3_600_000);
+    }
+
+    // Three buttons in one row.
+    const target = await run(false);
+    const y = async (sel) => (await p.locator(sel).boundingBox()).y;
+    assert.equal(await y('#unsure-btn'), await y('#good-btn'));
+    assert.equal(await y('#unsure-btn'), await y('#bad-btn'));
+    assert.equal(await p.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await p.screenshot({ path: OUT + '42-result-three-sv.png' });
+    await p.tap('#unsure-btn');
+    assert.equal(await t('#unsure-question'), 'Hur var Charlie när du kom hem?');
+    assert.ok(!(await p.isVisible('#good-btn')));
+    await p.screenshot({ path: OUT + '43-unsure-sv.png' });
+    await p.tap('#unsure-back'); // changed mind: back to the three buttons
+    assert.ok(await p.isVisible('#good-btn'));
+    await p.tap('#unsure-btn');
+    await p.tap('#calm-btn');
+    // Saved as went well; the comment screen as after "Gick bra".
+    assert.ok(await p.isVisible('#saved-done'));
+    await p.tap('#saved-done');
+    let last = (await stored()).sessions.at(-1);
+    assert.equal(last.result, 'good');
+    assert.equal(last.returnCheck, 'calm');
+    const fmt = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    assert.equal(await t('#target-value'), fmt(target)); // the same target again
+    assert.equal(await t('#target-basis'), 'Du visste inte hur passet gick, men Charlie var lugn när du kom hem: samma tid igen.');
+
+    // Excited → didn't go well, then the usual worry question.
+    await p.clock.runFor(3_600_000);
+    await p.tap('#start-btn');
+    await p.clock.runFor(20_000);
+    await p.tap('#end-btn');
+    await p.tap('#unsure-btn');
+    await p.tap('#unsettled-btn');
+    assert.equal(await t('#onset-question'), 'Ungefär när började Charlie bli orolig?');
+    await p.tap('#onset-unknown');
+    last = (await stored()).sessions.at(-1);
+    assert.equal(last.result, 'bad');
+    assert.equal(last.returnCheck, 'unsettled');
+    await open(p, 'history');
+    assert.match(await t('#history li:first-child .tag'), /Gick inte bra · uppspelt vid hemkomst/);
+    assert.match(await t('#history li:nth-child(2) .tag'), /Gick bra · lugn vid hemkomst/);
     await c.close();
   });
 

@@ -35,6 +35,7 @@ import {
   MAX_COMMENT,
   formatTimer,
   RESULTS,
+  RETURN_CHECK,
 } from './training.js';
 import { loadState, saveState } from './store.js';
 import { renderChart, renderOverview, hasClippedBars, resultText, MAX_BARS } from './chart.js';
@@ -558,8 +559,9 @@ $('end-btn').addEventListener('click', () => {
 
 // Saved right away, so nothing is lost. The next screen has the comment box (once), and after
 // "Didn't go well" also the optional worry question.
-function rate(result) {
-  const next = recordResult(state, result);
+function rate(result, options) {
+  unsureOpen = false;
+  const next = recordResult(state, result, options);
   savedFor = next.sessions[next.sessions.length - 1]?.id ?? null;
   savedFilled = null;
   clearOnsetInputs();
@@ -567,6 +569,21 @@ function rate(result) {
 }
 $('good-btn').addEventListener('click', () => rate(RESULTS.GOOD));
 $('bad-btn').addEventListener('click', () => rate(RESULTS.BAD));
+
+// "Don't know": ask how the dog was on your return (calm → went well, same time next;
+// excited → didn't go well, then the usual worry question).
+let unsureOpen = false;
+$('unsure-btn').addEventListener('click', () => {
+  unsureOpen = true;
+  render();
+  $('calm-btn').focus();
+});
+$('unsure-back').addEventListener('click', () => {
+  unsureOpen = false;
+  render();
+});
+$('calm-btn').addEventListener('click', () => rate(RESULTS.GOOD, { returnCheck: RETURN_CHECK.CALM }));
+$('unsettled-btn').addEventListener('click', () => rate(RESULTS.BAD, { returnCheck: RETURN_CHECK.UNSETTLED }));
 
 // ---------- after rating: comment (editable) and, after "didn't go well", the worry question ----------
 
@@ -635,7 +652,10 @@ $('onset-save').addEventListener('click', () => {
   savedFor = null;
   update(setAnxietyOnset(state, session.id, input.value));
 });
-$('discard-btn').addEventListener('click', () => update(discardPending(state)));
+$('discard-btn').addEventListener('click', () => {
+  unsureOpen = false;
+  update(discardPending(state));
+});
 
 // Tap a bar to see its details.
 $('chart').addEventListener('click', (e) => showBarDetail(e.target.closest('.bar')));
@@ -729,6 +749,9 @@ function render() {
   }
   if (mode === 'result') {
     $('result-duration').textContent = formatDuration(state.pending.durationSec);
+    $('result-main').hidden = unsureOpen;
+    $('unsure-block').hidden = !unsureOpen;
+    $('unsure-question').textContent = t('unsureQuestion', { dog: dogName() });
     $('result-target').textContent = state.pending.targetSec
       ? t('resultTargetSuffix', { time: formatTarget(state.pending.targetSec) })
       : '';
